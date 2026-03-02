@@ -1,7 +1,8 @@
+import time
 import scipy
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
+from matplotlib.patches import Circle
 
 class Shells:
     def __init__(self):
@@ -19,14 +20,16 @@ class Shells:
         self.data = None
         self.inv_cdf = None
         self.Rmax = None
+        self.cumMass = None
         self.m0 = 1.0
         self.a = 1.0
 
-    def initialise(self, Nshells,
+    def initialise(self, Nshells, verb=False,
                    Rmin=1e-5, Rmax=10.0,
                    Psi0=1e-5, R0=2.0, w_min=1e-6):
         """
         """
+        start = time.time()
         self.Rmin = Rmin
         self.Rmax = Rmax
         r_grid = np.geomspace(Rmin, Rmax, Nshells)
@@ -45,10 +48,9 @@ class Shells:
             dr_i = dr[i]
             q    = q_samples[i]
             mu   = mu_samples[i]
-            dmu = 2.0 / Nshells
 
             Psi = Psi0 * np.exp(-r**2 / (2 * R0**2))
-            w = self.compute_weight(r, dr_i, mu, dmu, q, Psi)
+            w = self.compute_weight(r, dr_i, mu, q, Psi)
 
             qr  = q * mu
             ell = r * q * np.sqrt(1.0 - mu**2)
@@ -65,6 +67,9 @@ class Shells:
         self.data['w'] = np.maximum(self.data['w'], w_min)
 
         self.update_mass() # mass and eps
+        self.enclosed_mass()
+        if verb:
+            print(f"ICs took {time.time()-start:.5f} s")
 
     def setup_FD_sampler(self, qmax, ngrid):
         """
@@ -84,11 +89,23 @@ class Shells:
         u = np.random.rand(N)
         return self.inv_cdf(u)
 
-    def compute_weight(self, r, dr, mu, dmu, q, Psi):
+    def compute_weight(self, r, dr, mu, q, Psi):
+
+        Nq = 1.5*scipy.special.zeta(3)   # norm constant
+
         f0 = 1.0 / (np.exp(q) + 1.0)
-        dfdlnq = -(q * np.exp(q)) / (np.exp(q) + 1.0)**2
-        pert = 1.0 + (dfdlnq / f0) * Psi * mu
-        return 8 * np.pi**2 * r**2 * dr * (1.0 - Psi) * dmu * pert
+        dfdlnq = -(q*np.exp(q))/(np.exp(q)+1.0)**2
+        pert = 1.0 + (dfdlnq/f0)*Psi*mu
+
+        weight = (
+            8*np.pi**2 *
+            r**2 * dr *
+            (1.0 - Psi) *
+            2.0 * Nq *
+            pert
+        )
+
+        return weight
 
     def update_mass(self):
         self.data['m'] = self.m0 + self.data['phi']
@@ -105,13 +122,20 @@ class Shells:
         """
         self.data.sort(order='R', kind='mergesort')
 
-    #def enclosed_mass(self):
-    #    """
-    #    Compute cumulative mass assuming sorted by R.
-    #    """
-    #    return np.cumsum(self.data['w'])
+    def enclosed_weight(self):
+        """
+        Compute cumulative mass assuming sorted by R.
+        """
+        return np.cumsum(self.data['w'])
 
-    def step(self, dt):
+    def enclosed_mass(self):
+        """
+        Compute cumulative mass assuming sorted by R.
+        """
+        self.cumMass = np.cumsum(self.data['w']*self.data['m']/self.data['eps'])
+        return self.cumMass
+
+    def step(self, dt, include_lr=True, include_gravity=True):
         """
         Advance system by one conformal time step deta
         using kick-drift-kick (leapfrog).
@@ -119,7 +143,9 @@ class Shells:
 
         # --- First compute force from current configuration
         solver = ForceSolver(self)
-        dmdr_term = solver.computeF(include_self=False)
+        dmdr_term = solver.computeF(include_lr=include_lr, \
+                                    include_gravity=include_gravity, \
+                                    include_self=False)
         accel = self.ell**2 / (self.eps * self.R**3) - self.m * dmdr_term
 
         # ---- Kick (half step in momentum)
@@ -140,9 +166,12 @@ class Shells:
 
         # ---- Recompute force at new positions
         self.sort()
+        self.enclosed_mass()
         solver = ForceSolver(self)
         dmdr_term = solver.computeF(include_self=False)
         accel = self.ell**2 / (self.eps * self.R**3) - self.m * dmdr_term
+
+        # Add here scale factor update in MD
 
         # ---- Final half kick
         self.data['q'] += 0.5 * dt * accel
@@ -161,8 +190,25 @@ class Shells:
         plt.xlim(self.Rmin, self.Rmax)
         plt.ylim(-10, 10)
         plt.axhline(0, color='k', lw=0.5, ls='--', alpha=0.5)
-
         return fig
+
+    def circles(self, skip=10):
+        fig, ax = plt.subplots(figsize=(8,8))
+        for r in self.R[::skip]:
+            circle = Circle((0,0), r, fill=False, color='k', alpha=0.1)
+            ax.add_patch(circle)
+
+        ax.set_xlim(-self.R.max(), self.R.max())
+        ax.set_ylim(-self.R.max(), self.R.max())
+        ax.set_aspect('equal')
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_visible(False)
+        ax.spines['left'].set_visible(False)
+        return fig
+
 
     @property
     def ID(self):
@@ -211,6 +257,7 @@ class ForceSolver:
         self.eps = shells.eps
         self.phi_prev = shells.phi
         self.m = shells.m
+        self.cumMass = shells.cumMass
 
         if not np.all(self.R[:-1] <= self.R[1:]):
             raise ValueError("R must be sorted in ascending order")
@@ -222,37 +269,49 @@ class ForceSolver:
         self.cumB = np.cumsum(B)
         self.totalB = self.cumB[-1]
 
-    def computeF(self, include_self=True):
+    def computeF(self, include_lr=True, include_gravity=True, include_self=True, G=1):
         r = self.R
+        force = np.zeros_like(r)
 
-        sum_outer = np.concatenate(([0.0], self.cumA[:-1]))
-        sum_inner = self.totalB - np.concatenate(([0.0], self.cumB[:-1]))
+        if include_lr:
+            sum_outer = np.concatenate(([0.0], self.cumA[:-1]))
+            sum_inner = self.totalB - np.concatenate(([0.0], self.cumB[:-1]))
 
-        if not include_self: # Remove self-contribution
-            #A_self = self.cumA - np.concatenate(([0.0], self.cumA[:-1]))
-            B_self = self.cumB - np.concatenate(([0.0], self.cumB[:-1]))
-            sum_inner = sum_inner - B_self
+            if not include_self: # Remove self-contribution
+                #A_self = self.cumA - np.concatenate(([0.0], self.cumA[:-1]))
+                B_self = self.cumB - np.concatenate(([0.0], self.cumB[:-1]))
+                sum_inner = sum_inner - B_self
 
 
-        sinh_r = np.sinh(r)
-        coth_r = np.cosh(r) / sinh_r
+            sinh_r = np.sinh(r)
+            coth_r = np.cosh(r) / sinh_r
 
-        exp_term = np.exp(-r) / r
-        r_term = sinh_r / r
+            exp_term = np.exp(-r) / r
+            r_term = sinh_r / r
 
-        ## New potential 
-        self.phi = - exp_term * sum_outer - r_term * sum_inner # again, g=1
+            ## New potential 
+            self.phi = - exp_term * sum_outer - r_term * sum_inner # again, g=1
 
-        # Force
-        exp_r_term = np.exp(-r) / r**2 * (1+r)
-        inner_r_term = sinh_r / r**2 * (1 - r * coth_r)
+            # Force
+            exp_r_term = np.exp(-r) / r**2 * (1+r)
+            inner_r_term = sinh_r / r**2 * (1 - r * coth_r)
 
-        #exp_r_term = exp_term * (1 + r) / r
-        #inner_r_term = r_term / r * (1 - r * coth_r)
+            #exp_r_term = exp_term * (1 + r) / r
+            #inner_r_term = r_term / r * (1 - r * coth_r)
 
-        force = exp_r_term * sum_outer + inner_r_term * sum_inner
-        force *= self.a**2 / self.eps
+            lr_force = exp_r_term * sum_outer + inner_r_term * sum_inner
+            lr_force *= self.a**2 / self.eps
 
-        return force
+            force += lr_force
+        else:
+            self.phi = np.zeros_like(r)
+
+        if include_gravity:
+
+            enclosed_mass = np.concatenate(([0.0], self.cumMass[:-1]))
+            grav_force = - G * self.eps * enclosed_mass / r**2
+            force += grav_force
+
+        return force/(4*np.pi)
 
 
