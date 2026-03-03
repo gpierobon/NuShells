@@ -3,6 +3,7 @@ import scipy
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
+import sort as s
 
 class Shells:
     def __init__(self):
@@ -120,7 +121,7 @@ class Shells:
         Stable in-place sort by radius.
         Use mergesort for nearly sorted arrays in time-stepping simulations.
         """
-        self.data.sort(order='R', kind='mergesort')
+        self.data.sort(order='R', kind='stable') # stable is the fastest
 
     def enclosed_weight(self):
         """
@@ -177,6 +178,28 @@ class Shells:
         self.data['q'] += 0.5 * dt * accel
         self.update_mass()
 
+    def rho_nu(self, nbins=200, return_delta=True):
+        """
+        """
+        self.sort()
+
+        edges = np.geomspace(self.Rmin, self.Rmax, nbins + 1)
+        r_centers = np.sqrt(edges[:-1] * edges[1:])
+        mass_weights = self.w * self.m / self.eps
+
+        mass_in_bin, _ = np.histogram(self.R, bins=edges, weights=mass_weights)
+        vol = (4/3) * np.pi * (edges[1:]**3 - edges[:-1]**3)
+        rho = mass_in_bin / vol
+        total_mass = np.sum(mass_weights)
+        total_volume = (4/3) * np.pi * (self.Rmax**3 - self.Rmin**3)
+        rho_bar = total_mass / total_volume
+
+        if return_delta:
+            delta = (rho - rho_bar) / rho_bar
+            return r_centers, delta
+        else:
+            return r_centers, rho
+
     def phase_space(self):
         fig = plt.figure(figsize=(8,6))
         sizes = 50 * self.w
@@ -209,6 +232,10 @@ class Shells:
         ax.spines['left'].set_visible(False)
         return fig
 
+    def save(self, odir, num):
+        np.savetxt(odir +'/conf_%.3d.txt'%num,
+                   np.column_stack([self.R, self.q, self.ell, self.ID]),
+                   fmt="%.2e %.2e %.2e %d")
 
     @property
     def ID(self):
