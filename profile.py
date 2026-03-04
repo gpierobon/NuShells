@@ -42,10 +42,7 @@ def report(unit: str = "ms", top: int = None):
     for key, times in _timings.items():
         n     = len(times)
         total = sum(times) * scale
-        mean  = total / n
-        mn    = min(times) * scale
-        mx    = max(times) * scale
-        rows.append((key, n, total, mean, mn, mx))
+        rows.append((key, n, total))
 
     rows.sort(key=lambda r: r[2], reverse=True)          # sort by total time
     if top:
@@ -56,7 +53,7 @@ def report(unit: str = "ms", top: int = None):
     col_w = max(len(r[0]) for r in rows) + 2
     header = (
         f"{'Function':<{col_w}} {'Calls':>6}  "
-        f"{'Total':>10}  {'%':>6}  {'Mean':>10}  {'Min':>10}  {'Max':>10}"
+        f"{'Total':>10}  {'%':>6}"
     )
     sep = "-" * len(header)
 
@@ -65,11 +62,11 @@ def report(unit: str = "ms", top: int = None):
     print(sep)
     print(header)
     print(sep)
-    for key, n, total, mean, mn, mx in rows:
+    for key, n, total in rows:
         pct = 100.0 * total / grand_total if grand_total > 0 else 0.0
         print(
             f"{key:<{col_w}} {n:>6}  "
-            f"{total:>10.3f}  {pct:>5.1f}%  {mean:>10.3f}  {mn:>10.3f}  {mx:>10.3f}"
+            f"{total:>10.3f}  {pct:>5.1f}%"
         )
     print(sep + "\n")
 

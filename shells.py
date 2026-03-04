@@ -1,8 +1,8 @@
 import time
 import scipy
 import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.patches import Circle
+#import matplotlib.pyplot as plt
+#from matplotlib.patches import Circle
 import sort as s
 
 class Shells:
@@ -27,7 +27,7 @@ class Shells:
 
     def initialise(self, Nshells, verb=False,
                    Rmin=1e-5, Rmax=10.0,
-                   Psi0=1e-5, R0=2.0, w_min=1e-6):
+                   Psi0=1e-5, R0=2.0, w_min=None):
         """
         """
         start = time.time()
@@ -64,6 +64,8 @@ class Shells:
             self.data['phi'][i]  = Psi
 
         # weights adjustment
+        if w_min is None:
+            w_min = 0.001*Rmin**(3)
         self.data['w'] /= np.max(self.data['w'])
         self.data['w'] = np.maximum(self.data['w'], w_min)
 
@@ -147,6 +149,7 @@ class Shells:
         dmdr_term = solver.computeF(include_lr=include_lr, \
                                     include_gravity=include_gravity, \
                                     include_self=False)
+
         accel = self.ell**2 / (self.eps * self.R**3) - self.m * dmdr_term
 
         # ---- Kick (half step in momentum)
@@ -200,42 +203,15 @@ class Shells:
         else:
             return r_centers, rho
 
-    def phase_space(self):
-        fig = plt.figure(figsize=(8,6))
-        sizes = 50 * self.w
-        #plt.scatter(self.R, self.q,
-        #            s=sizes,
-        #            alpha=0.5)
-        plt.scatter(self.R, self.q, s=5, alpha=0.5)
-        plt.xlabel(r"$R$")
-        plt.ylabel(r"$q_r$")
-        plt.xscale('log')
-        plt.xlim(self.Rmin, self.Rmax)
-        plt.ylim(-10, 10)
-        plt.axhline(0, color='k', lw=0.5, ls='--', alpha=0.5)
-        return fig
+    def save(self, odir, num, delta=False):
+        if delta:
+            r, delta = self.rho_nu()
+            np.savetxt(odir+'/delta_%.3d.txt'%num, np.column_stack([r, delta]))
 
-    def circles(self, skip=10):
-        fig, ax = plt.subplots(figsize=(8,8))
-        for r in self.R[::skip]:
-            circle = Circle((0,0), r, fill=False, color='k', alpha=0.1)
-            ax.add_patch(circle)
-
-        ax.set_xlim(-self.R.max(), self.R.max())
-        ax.set_ylim(-self.R.max(), self.R.max())
-        ax.set_aspect('equal')
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['bottom'].set_visible(False)
-        ax.spines['left'].set_visible(False)
-        return fig
-
-    def save(self, odir, num):
         np.savetxt(odir +'/conf_%.3d.txt'%num,
-                   np.column_stack([self.R, self.q, self.ell, self.ID]),
-                   fmt="%.2e %.2e %.2e %d")
+                   np.column_stack([self.ID, self.R, self.q,
+                                    self.ell, self.m]),
+                   fmt="%d %.2e %.2e %.2e %.2e")
 
     @property
     def ID(self):

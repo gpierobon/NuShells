@@ -9,3 +9,5 @@ jl/
 sort.py
 rho/
 output/
+
+*.ipynb
