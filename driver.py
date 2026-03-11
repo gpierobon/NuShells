@@ -2,27 +2,22 @@ import os
 import tqdm
 import shutil
 import numpy as np
-#import matplotlib.pyplot as plt
 
 from profile import timed, report, reset
-import shells as sh
+from shells_v2 import Shells
+from force import ForceSolver
 
 Nshells = 10_000
-nt      = 1_000
-dt      = 0.0002
-nmeas   = 50
-odir    = 'o1'
+nt      = 30_000
+nmeas   = 100
+odir    = 'output'
 seed    = 9
 
-lr      = True
-grav    = False
-
 # Profilers
-sh.Shells.initialise      = timed()(sh.Shells.initialise)
-sh.Shells.sort            = timed()(sh.Shells.sort)
-sh.Shells.save            = timed()(sh.Shells.save)
-sh.ForceSolver.__init__   = timed()(sh.ForceSolver.__init__)
-sh.ForceSolver.computeF   = timed()(sh.ForceSolver.computeF)
+Shells.init  = timed("Init")(Shells.init)
+Shells._sort = timed("Sort")(Shells._sort)
+Shells._save = timed("I/O") (Shells._save)
+ForceSolver.__init__ = timed("Force")(ForceSolver.__init__)
 
 if __name__ == "__main__":
 
@@ -32,14 +27,22 @@ if __name__ == "__main__":
 
     saves = set(np.linspace(0, nt - 1, nmeas, dtype=int))
     np.random.seed(seed)
-    shells = sh.Shells()
-    shells.initialise(Nshells, verb=True, Rmin=1e-3, w_min=1e-12, Psi0=1)
+    shells = Shells()
+    shells.init(Nshells, verb=True)
 
     j = 0
-    for t in tqdm.tqdm(range(nt)):
-        shells.step(dt, include_lr=lr, include_gravity=grav)
+    pbar = tqdm.tqdm(range(nt))
+
+    for t in pbar:
+        shells.step()
+
+        z = 1/shells.a - 1
+        pbar.set_description(f"z={z:.1f}")
+
         if t in saves:
-            shells.save(odir, j, delta=False)
+            shells._save(odir, j)
             j += 1
 
     report(unit="s")
+
+

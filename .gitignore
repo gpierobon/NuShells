@@ -11,3 +11,4 @@ rho/
 output/
 
 *.ipynb
+.DS_Store

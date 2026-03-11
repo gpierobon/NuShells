@@ -22,15 +22,22 @@ class Shells:
         self.inv_cdf = None
         self.Rmax = None
         self.cumMass = None
+        self.dt = None
+        self.t = None
+        self.a = None
         self.m0 = 1.0
-        self.a = 1.0
 
     def initialise(self, Nshells, verb=False,
                    Rmin=1e-5, Rmax=10.0,
-                   Psi0=1e-5, R0=2.0, w_min=None):
+                   Psi0=1e-5, R0=2.0,
+                   w_min=None, dt=0.0001,
+                   a=0.01):
         """
         """
         start = time.time()
+        self.a = a
+        self.t = np.sqrt(a)
+        self.dt = dt
         self.Rmin = Rmin
         self.Rmax = Rmax
         r_grid = np.geomspace(Rmin, Rmax, Nshells)
@@ -114,9 +121,13 @@ class Shells:
         self.data['m'] = self.m0 + self.data['phi']
         self.data['eps'] = self.a * np.sqrt(
             self.data['q']**2 +
-            self.data['ell']**2 +
+            self.data['ell']**2/self.data['R']**2 +
             self.data['m']**2
         )
+
+    def update_a(self):
+        self.a += self.dt*self.t
+
 
     def sort(self):
         """
@@ -138,17 +149,18 @@ class Shells:
         self.cumMass = np.cumsum(self.data['w']*self.data['m']/self.data['eps'])
         return self.cumMass
 
-    def step(self, dt, include_lr=True, include_gravity=True):
+    def step(self, include_lr=True, include_gravity=True):
         """
         Advance system by one conformal time step deta
         using kick-drift-kick (leapfrog).
         """
 
+        dt = self.dt
+
         # --- First compute force from current configuration
         solver = ForceSolver(self)
         dmdr_term = solver.computeF(include_lr=include_lr, \
-                                    include_gravity=include_gravity, \
-                                    include_self=False)
+                                    include_gravity=include_gravity)
 
         accel = self.ell**2 / (self.eps * self.R**3) - self.m * dmdr_term
 
@@ -171,8 +183,10 @@ class Shells:
         # ---- Recompute force at new positions
         self.sort()
         self.enclosed_mass()
+        self.update_a()
         solver = ForceSolver(self)
-        dmdr_term = solver.computeF(include_self=False)
+        dmdr_term = solver.computeF(include_lr=include_lr, \
+                                    include_gravity=include_gravity)
         accel = self.ell**2 / (self.eps * self.R**3) - self.m * dmdr_term
 
         # Add here scale factor update in MD
@@ -188,7 +202,7 @@ class Shells:
 
         edges = np.geomspace(self.Rmin, self.Rmax, nbins + 1)
         r_centers = np.sqrt(edges[:-1] * edges[1:])
-        mass_weights = self.w * self.m / self.eps
+        mass_weights = self.w# * self.m / self.eps
 
         mass_in_bin, _ = np.histogram(self.R, bins=edges, weights=mass_weights)
         vol = (4/3) * np.pi * (edges[1:]**3 - edges[:-1]**3)
@@ -257,6 +271,7 @@ class ForceSolver:
         self.R = shells.R
         self.q = shells.q
         self.ell = shells.ell
+        self.dt = shells.dt
         self.eps = shells.eps
         self.phi_prev = shells.phi
         self.m = shells.m
@@ -265,26 +280,20 @@ class ForceSolver:
         if not np.all(self.R[:-1] <= self.R[1:]):
             raise ValueError("R must be sorted in ascending order")
 
-        A = self.w * self.m / self.eps * np.sinh(self.R) / self.R
-        B = self.w * self.m / self.eps * np.exp(-self.R) / self.R
+        A = self.w * self.m / self.eps * np.sinh(self.R*self.a) / self.R
+        B = self.w * self.m / self.eps * np.exp(-self.R*self.a) / self.R
 
         self.cumA = np.cumsum(A)
         self.cumB = np.cumsum(B)
         self.totalB = self.cumB[-1]
 
-    def computeF(self, include_lr=True, include_gravity=True, include_self=True, G=1):
+    def computeF(self, include_lr=True, include_gravity=True, G=1):
         r = self.R
         force = np.zeros_like(r)
 
         if include_lr:
             sum_outer = np.concatenate(([0.0], self.cumA[:-1]))
             sum_inner = self.totalB - np.concatenate(([0.0], self.cumB[:-1]))
-
-            if not include_self: # Remove self-contribution
-                #A_self = self.cumA - np.concatenate(([0.0], self.cumA[:-1]))
-                B_self = self.cumB - np.concatenate(([0.0], self.cumB[:-1]))
-                sum_inner = sum_inner - B_self
-
 
             sinh_r = np.sinh(r)
             coth_r = np.cosh(r) / sinh_r

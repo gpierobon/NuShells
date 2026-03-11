@@ -1,3 +1,4 @@
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle
 
@@ -16,10 +17,18 @@ def phase_space(shells):
     plt.axhline(0, color='k', lw=0.5, ls='--', alpha=0.5)
     return fig
 
-def circles(shells, skip=10, save=False, odir='output', num=0):
+def circles(shells, skip=10, save=False, odir='output', num=0, cmap='Grays'):
+
+    norm = mpl.colors.LogNorm(vmin=shells.w.min(), vmax=shells.w.max())
+    cmap = plt.get_cmap(cmap)
+
     fig, ax = plt.subplots(figsize=(8,8))
-    for r in shells.R[::skip]:
-        circle = Circle((0,0), r, fill=False, color='k', alpha=0.1)
+    sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
+    fig.colorbar(sm, ax=ax, label=r"$w$")
+    #for r in shells.R[::skip]:
+    for r, w in zip(shells.R[::skip], shells.w[::skip]):
+        color = cmap(norm(w))
+        circle = Circle((0,0), r, fill=False, color=color, alpha=0.8)
         ax.add_patch(circle)
 
     ax.set_xlim(-shells.R.max(), shells.R.max())
@@ -31,8 +40,9 @@ def circles(shells, skip=10, save=False, odir='output', num=0):
     ax.spines['right'].set_visible(False)
     ax.spines['bottom'].set_visible(False)
     ax.spines['left'].set_visible(False)
+    z = 1/shells.a-1
+    ax.set_title(r'$z=%.2f$'%z)
     if save:
         plt.savefig(odir+'/circ_%.3d.png'%num, bbox_inches='tight')
     return fig
-
 
