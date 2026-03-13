@@ -7,8 +7,8 @@ from profile import timed, report, reset
 from shells_v2 import Shells
 from force import ForceSolver
 
-Nshells = 10_000
-nt      = 30_000
+Nshells = 1_000
+nt      = 50_000
 nmeas   = 100
 odir    = 'output'
 seed    = 9
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     saves = set(np.linspace(0, nt - 1, nmeas, dtype=int))
     np.random.seed(seed)
     shells = Shells()
-    shells.init(Nshells, verb=True)
+    shells.init(Nshells, g=1e-30,verb=True)
 
     j = 0
     pbar = tqdm.tqdm(range(nt))

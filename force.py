@@ -30,13 +30,14 @@ class ForceSolver:
 
         # w_i * hat_m_i / hat_eps_i (dimensionless)
         moe = w * m / eps
+        cut = 1e6
 
-        sinh_over_xi = np.where(xi > 1e6, np.sinh(xi) / xi,
+        sinh_over_xi = np.where(xi > cut, np.sinh(xi) / xi,
                                 1.0 + xi**2/6.0 + xi**4/120.0)
 
         # exp(-xi)/xi, used for B_i = moe_i * exp(-xi_i)/xi_i
         # inner-shell weights, only relevant for xi << 1)
-        exp_over_xi = np.exp(-xi) / np.where(xi > tiny, xi, tiny)
+        exp_over_xi = np.exp(-xi) / np.where(xi > cut, xi, cut)
 
         # Cumulative sums (shells sorted ascending by hat_r) ----
         # A_i = moe_i * sinh(xi_i)/xi_i (outer-kernel weight: shell i inside r)
@@ -63,7 +64,7 @@ class ForceSolver:
         # Phi_code = -1/(4pi) * [exp(-xi)/r * sum_outer  +  sinh(xi)/r * sum_inner]
         exp_over_r  = np.exp(-xi) / R
         sinh_over_r = np.where(screened, 0.0,
-                               np.where(xi > tiny, np.sinh(xi) / R, xi / R))
+                               np.where(xi > cut, np.sinh(xi) / R, xi / R))
 
         self.hat_phi = -(exp_over_r * sum_outer + sinh_over_r * sum_inner) / (4.0*np.pi)
         self.hat_phi *= shells.alpha    # hat_phi = alpha * Phi_code

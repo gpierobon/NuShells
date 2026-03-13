@@ -3,6 +3,7 @@ import scipy
 import numpy as np
 import warnings
 
+from force import ForceSolver
 from constants import *
 
 
@@ -384,8 +385,8 @@ class Shells:
 
         def _accel():
             ## TO REVIEW
-            #solver = ForceSolver(self)
-            #F      = solver.F_kernel  # dPhi_code/d(tilde_r) for each shell  [O(1)]
+            solver = ForceSolver(self)
+            F      = solver.F_kernel  # dPhi_code/d(tilde_r) for each shell  [O(1)]
 
             ## Update hat_phi from the newly computed potential
             #self.data['phi'] = solver.hat_phi
@@ -396,11 +397,11 @@ class Shells:
 
             # Long-range: a^2 * alpha * hat_m / hat_eps * F_kernel
             lr = np.zeros_like(fs)
-            #if include_yukawa:
-            #    yuk = self.a**2 * FP * self.data['m'] / self.data['eps'] * F
+            if include_yukawa:
+                yuk = self.a**2 * FP * self.data['m'] / self.data['eps'] * F
 
             ## Gravity (optional): -G * M(<r) / tilde_r^2
-            grav = np.zeros_like(cent)
+            grav = np.zeros_like(fs)
             #if include_gravity:
             #    M_enc = np.concatenate(([0.0], self._cumMass[:-1]))
             #    grav  = G_code * M_enc / self.data['R']**2

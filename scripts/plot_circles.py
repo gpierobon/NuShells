@@ -29,8 +29,8 @@ shells = Shells()
 shells._load(data_dir, 0)
 #norm = mpl.colors.Normalize(vmin=shells.w.min(), vmax=shells.w.max())
 norm = mpl.colors.LogNorm(vmin=shells.w.min(), vmax=shells.w.max())
-cmap = plt.get_cmap("Blues")
-skip = 5 if shells.N > 1000 else 1
+cmap = plt.get_cmap("Grays")
+skip = 10 if shells.N > 1000 else 1
 
 plt.ion()
 fig, ax = plt.subplots(figsize=(8,8))
