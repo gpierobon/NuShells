@@ -354,8 +354,10 @@ class Shells:
     # -----------------------------------------------------------------------
     def _sort(self):
         """Sort shells in ascending hat_r order (stable / merge sort)."""
-        self.data.sort(order='R', kind='stable')
-
+        idx = np.argsort(self.R, kind='stable')
+        for arr in (self.R, self.q, self.ell, self.w, \
+                    self.m, self.eps, self.phi):
+            arr[:] = arr[idx]
 
     # -----------------------------------------------------------------------
     #  Time step: kick-drift-kick leapfrog
@@ -398,7 +400,7 @@ class Shells:
             # Long-range: a^2 * alpha * hat_m / hat_eps * F_kernel
             lr = np.zeros_like(fs)
             if include_yukawa:
-                yuk = self.a**2 * FP * self.data['m'] / self.data['eps'] * F
+                lr = self.a**2 * FP * self.data['m'] / self.data['eps'] * F
 
             ## Gravity (optional): -G * M(<r) / tilde_r^2
             grav = np.zeros_like(fs)
@@ -459,8 +461,8 @@ class Shells:
         """Save shell state to a text file."""
         header = (
             f"ID hat_r  hat_q  hat_ell  hat_m  hat_eps  hat_w  hat_phi\n"
-            f"a={self.a:.6e}"
-            #f"a={self.a:.6e}  step={step_index}"
+            f"a={self.a:.6e}\n"
+            f"Rmin={self.Rmin:.2e}, Rmax={self.Rmax:.2e}"
         )
         np.savetxt(
             f"{path}/shells_{step_index:05d}.txt",
@@ -485,11 +487,11 @@ class Shells:
             f.readline()
             line = f.readline()
             self.a = float(line.split("=")[-1])
-
-        raw = np.loadtxt(f"{path}/shells_{step_index:05d}.txt")
+            line = f.readline()
+            self.Rmin = float(line.split(",")[0].split('=')[1])
+            self.Rmax = float(line.split(",")[1].split('=')[1])
 
         raw = np.loadtxt(fname)
-
 
         N = raw.shape[0]
         self.data = np.zeros(N, dtype=self._dtype)
@@ -526,7 +528,7 @@ class Shells:
     # -----------------------------------------------------------------------
     # Neutrino delta density profile 
     # -----------------------------------------------------------------------
-    def delta(self, nbins=200):
+    def density(self, nbins=200):
         """
         Bin shells by weight in hat_r and return (r_bins, delta).
 
@@ -538,37 +540,15 @@ class Shells:
         self._sort()
         edges = np.geomspace(self.Rmin, self.Rmax, nbins + 1)
         r_c   = np.sqrt(edges[:-1] * edges[1:])
+        vol   = (4.0/3.0) * np.pi * (edges[1:]**3 - edges[:-1]**3)
+
         mass, _ = np.histogram(self.data['R'], bins=edges,
                                weights=self.data['w'])
-        vol     = (4.0/3.0) * np.pi * (edges[1:]**3 - edges[:-1]**3)
-        rho     = mass / vol
-        rho_bar = np.sum(self.data['w']) / (
-            (4.0/3.0)*np.pi*(self.Rmax**3 - self.Rmin**3)
-        )
-        delta = (rho - rho_bar) / rho_bar
-        return r_c, delta
 
-    #def rho_nu(self, nbins=200, return_delta=True):
-    #    """
-    #    """
-    #    self._sort()
-
-    #    edges = np.geomspace(self.Rmin, self.Rmax, nbins + 1)
-    #    r_centers = np.sqrt(edges[:-1] * edges[1:])
-    #    mass_weights = self.w# * self.m / self.eps
-
-    #    mass_in_bin, _ = np.histogram(self.R, bins=edges, weights=mass_weights)
-    #    vol = (4/3) * np.pi * (edges[1:]**3 - edges[:-1]**3)
-    #    rho = mass_in_bin / vol
-    #    total_mass = np.sum(mass_weights)
-    #    total_volume = (4/3) * np.pi * (self.Rmax**3 - self.Rmin**3)
-    #    rho_bar = total_mass / total_volume
-
-    #    if return_delta:
-    #        delta = (rho - rho_bar) / rho_bar
-    #        return r_centers, delta
-    #    else:
-    #        return r_centers, rho
+        occ = mass > 0
+        n      = np.full_like(r_c, np.nan)
+        n[occ] = mass[occ] / vol[occ]
+        return r_c, n
 
 
     # -----------------------------------------------------------------------

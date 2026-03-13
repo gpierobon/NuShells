@@ -1,3 +1,6 @@
 #!/bin/bash
 
-python3 "scripts/plot_circles.py"
+DATA_DIR="${1:-output}"
+PAUSE="${2:-0.01}"
+
+python3 "scripts/plot_circles.py" "$DATA_DIR" "$PAUSE"

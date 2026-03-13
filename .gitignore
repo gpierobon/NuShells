@@ -12,3 +12,5 @@ output/
 
 *.ipynb
 .DS_Store
+o2*/
+dels/
