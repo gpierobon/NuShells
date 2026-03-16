@@ -221,6 +221,7 @@ class Shells:
             print("=" * 60)
             print("  Initialisation summary")
             print("=" * 60)
+            print(f"   Number of shells = {self.N}\n")
             print(f" \n Physical inputs [eV]:\n")
             print(f"    g         = {g:.3e}")
             print(f"    m_phi     = {m_phi:.3e} eV")
@@ -355,7 +356,7 @@ class Shells:
     def _sort(self):
         """Sort shells in ascending hat_r order (stable / merge sort)."""
         idx = np.argsort(self.R, kind='stable')
-        for arr in (self.R, self.q, self.ell, self.w, \
+        for arr in (self.ID, self.R, self.q, self.ell, self.w, \
                     self.m, self.eps, self.phi):
             arr[:] = arr[idx]
 
@@ -538,7 +539,8 @@ class Shells:
         delta : array  (rho - rho_bar) / rho_bar
         """
         self._sort()
-        edges = np.geomspace(self.Rmin, self.Rmax, nbins + 1)
+        edges = np.geomspace(np.min(self.R), np.max(self.R), nbins + 1)
+        #edges = np.geomspace(self.Rmin, self.Rmax, nbins + 1)
         r_c   = np.sqrt(edges[:-1] * edges[1:])
         vol   = (4.0/3.0) * np.pi * (edges[1:]**3 - edges[:-1]**3)
 

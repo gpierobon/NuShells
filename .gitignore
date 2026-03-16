@@ -8,7 +8,7 @@ jl/
 
 sort.py
 rho/
-output/
+output*/
 
 *.ipynb
 .DS_Store

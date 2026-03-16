@@ -29,9 +29,19 @@ def log_r(r, rmin):
 
 shells = Shells()
 shells._load(data_dir, 0)
-norm = mpl.colors.LogNorm(vmin=shells.w.min(), vmax=shells.w.max())
-cmap = plt.get_cmap("viridis_r")
 skip = 10 if shells.N > 1000 else 1
+
+#q_vals = np.abs(shells.q[::skip])           # radial momentum (hat_q_r)
+q_vals = np.sqrt(shells.q[::skip]**2 + (shells.ell[::skip]/shells.R[::skip])**2)
+w_vals = shells.w[::skip]
+f_vals = w_vals / np.where(q_vals > 0, q_vals**2, np.inf)
+
+norm = mpl.colors.LogNorm(vmin=np.nanmin(f_vals[f_vals > 0]),
+                           vmax=np.nanmax(f_vals))
+
+
+#norm = mpl.colors.LogNorm(vmin=shells.w.min(), vmax=shells.w.max())
+cmap = plt.get_cmap("Grays")
 
 plt.ion()
 fig, ax = plt.subplots(figsize=(8,8))
