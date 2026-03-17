@@ -18,6 +18,7 @@ class ForceSolver:
         m   = shells.m
         eps = shells.eps
         w   = shells.w
+        m0  = shells.m0
 
         # xi = a * hat_r  (Yukawa argument; xi~1 at the force range)
         # For numerics, we cap at XI_CAP: 
@@ -66,8 +67,8 @@ class ForceSolver:
         sinh_over_r = np.where(screened, 0.0,
                                np.where(xi > cut, np.sinh(xi) / R, xi / R))
 
-        self.hat_phi = -(exp_over_r * sum_outer + sinh_over_r * sum_inner) / (4.0*np.pi)
-        self.hat_phi *= shells.alpha    # hat_phi = alpha * Phi_code
+        self.hat_phi = -(exp_over_r * sum_outer + sinh_over_r * sum_inner)
+        self.hat_phi *= shells.alpha / (4.0 * np.pi) * m0**2
 
         # ---- F_kernel = dPhi_code / d(tilde_r) ----
         # Outer kernel (shells j < i, i.e. inside r):
