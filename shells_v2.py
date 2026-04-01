@@ -34,11 +34,14 @@ class Shells:
         self.T_nu   = None
         self.H0     = None
 
-        # Derived dimensionless ratios
+        # Derived dimensionless quantities
         self.alpha     = None   # g^2 * T^2 r_phi^2
         self.hat_M_phi = None   # M_phi / H0
-        self.m0_hat    = None   # m_nu / T_nu  -- rest mass
+        self.m0_hat    = None   # m_nu / T_nu 
         self.m0        = None   # alias for m0_hat
+        self.m_bkg     = None   # Effective mass in T units
+        self.phi_bkg   = None   # <phi> in T/g units
+        self.F         = None   # Force kernel
 
         # Grid bounds [tilde_r]
         self.Rmin  = None
@@ -56,8 +59,8 @@ class Shells:
              g       = 1e-26,
              m_phi   = 1e-29,    # eV
              m_nu    = 0.1,      # eV
-             T_nu    = T_NU_EV,  # eV
-             H0      = H0_EV,    # eV
+             T_nu    = T_NU_EV,  # eV (defined in constants.py) 
+             H0      = H0_EV,    # eV (defined in constants.py)
              kappa   = 0.75,     # a_ini = kappa * a_NR
              kappa2  = 0.75,     # a_end = kappa2 * 1 / R_min
              dt_frac = 0.01,     # dt = dt_frac * sqrt(a_ini)
@@ -118,6 +121,13 @@ class Shells:
         self.eta   = 2/H0*np.sqrt(self.a)
 
         # -------------------------------------------------------------------
+        # Background value
+        # -------------------------------------------------------------------
+        m_bkg, phi_bkg = self._solve_background()
+        self.m_bkg     = m_bkg
+        self.phi_bkg   = phi_bkg
+
+        # -------------------------------------------------------------------
         # Length/time scales
         # -------------------------------------------------------------------
         lambda_phi_ini = 1.0 / a_ini
@@ -126,7 +136,7 @@ class Shells:
                          (1.0/np.sqrt(a_ini) - 1.0/np.sqrt(a_NR))
 
         self.Rmin  = 0.01 * lambda_phi_ini
-        self.Rmax  = 10.0 * max(lambda_phi_ini, lambda_FS_NR)
+        self.Rmax  = 50.0 * max(lambda_phi_ini, lambda_FS_NR)
         self.a_end = 1.0 / self.Rmin * kappa2
 
         if R0 is None:
@@ -141,7 +151,6 @@ class Shells:
         z_ini = 1/self.a_ini-1
         z_end = 1/self.a_end-1
 
-
         # -------------------------------------------------------------------
         # r_hat, q_hat
         # -------------------------------------------------------------------
@@ -151,7 +160,7 @@ class Shells:
         dr[-1]  = dr[-2]
 
         q_total = self._sample_q(Nshells)
-        mu_samples  = np.random.uniform(-1.0, 1.0, Nshells)       # cos(theta)
+        mu_samples  = np.random.uniform(-1.0, 1.0, Nshells)      # cos(theta)
 
         self.data = np.zeros(Nshells, dtype=self._dtype)
 
@@ -178,10 +187,8 @@ class Shells:
             hat_qT = q * np.sqrt(max(1.0 - mu**2, 0.0))
             hat_ell = r * hat_qT
 
-            # Initial hat_phi
-            # For g << 1 and Psi << 1 this is negligible; initialised self-consistently
-            # on the first ForceSolver call in the initial step.  Set to 0 here.
-            hat_phi = 0.0 # Psi * 
+            # Initial hat_phi, guess is the background
+            hat_phi = self.phi_bkg
 
             self.data['ID'][i]  = i
             self.data['R'][i]   = r
@@ -189,8 +196,6 @@ class Shells:
             self.data['ell'][i] = hat_ell
             self.data['w'][i]   = w_i
             self.data['phi'][i] = hat_phi
-
-
 
         # -------------------------------------------------------------------
         # Normalise weights 
@@ -209,9 +214,12 @@ class Shells:
         # -------------------------------------------------------------------
         # Compute initial hat_phi self-consistently 
         # -------------------------------------------------------------------
-        #solver = ForceSolver(self)
-        #self.data['phi'] = solver.hat_phi    # dimensionless, << m0_hat
-        #self._update_mass()
+        solver = ForceSolver(self)
+        self.data['phi'] = solver.hat_phi
+        self._update_mass()
+        fs = self.data['ell']**2 / (self.data['eps'] * self.data['R']**3)
+        lr = self.a**2 * self.alpha * self.data['m'] / self.data['eps'] * solver.F_kernel
+        self.F = fs - lr
 
         # -------------------------------------------------------------------
         # Summary print
@@ -219,34 +227,28 @@ class Shells:
         if verb:
             print("")
             print("=" * 60)
-            print("  Initialisation summary")
+            print("  Simulation parameters")
             print("=" * 60)
-            print(f"   Number of shells = {self.N}\n")
-            print(f" \n Physical inputs [eV]:\n")
-            print(f"    g         = {g:.3e}")
-            print(f"    m_phi     = {m_phi:.3e} eV")
-            print(f"    m_nu      = {m_nu:.3e} eV")
-            print(f"    T_nu      = {T_nu:.3e} eV")
-            print(f"    H0        = {H0:.3e} eV")
-            print(f"    Range     = {frange:.3e} Mpc\n")
-            print(f" \n Dimensionless ratios:\n")
-            print(f"    alpha                 = {self.alpha:.3e}  ")
-            print(f"    m0_hat    (m_nu/T_nu) = {self.m0_hat:.3e} ")
-            print(f"    m_phi_hat (m_phi/H0)  = {self.m_phi_hat:.3e}\n")
-            print(f" \n Time:\n")
-            print(f"    a_NR  = {a_NR:.3e}   ")
-            print(f"    a_ini = {self.a_ini:.3e}  (z={z_ini:.1f})")
-            print(f"    a_end = {self.a_end:.3e}  (z={z_end:.1f})")
-            print(f"    dt    = {self.dt:.3e}     \n")
-            print(f" \n Length scales [1/m_phi]:\n")
-            print(f"    lambda_FS   = {lambda_FS_NR:.3e}  (free-streaming)")
-            print(f"    lambda_phi  = {lambda_phi_ini:.3e}  (Yukawa range)")
-            print(f"    Rmin        = {self.Rmin:.3e}")
-            print(f"    Rmax        = {self.Rmax:.3e}")
+            print(f" \n   Nshells = {self.N}\n")
+            print(f"   g       = {g:.3e}")
+            print(f"   m_phi   = {m_phi:.3e} eV")
+            print(f"   m_nu    = {m_nu:.3e} eV")
+            print(f"   T_nu    = {T_nu:.3e} eV")
+            print(f"   H0      = {H0:.3e} eV")
+            print(f"   Range   = {frange:.3e} Mpc\n")
+            print(f"   alpha   = {self.alpha:.3e}  ")
+            print(f"   m_nu/T_nu = {self.m0_hat:.3e} ")
+            print(f"   m_phi/H0  = {self.m_phi_hat:.3e}\n")
+            print(f"   a_NR  = {a_NR:.3e}   ")
+            print(f"   a_ini = {self.a_ini:.3e}  (z={z_ini:.1f})")
+            print(f"   a_end = {self.a_end:.3e}  (z={z_end:.1f})")
+            print(f"   dt    = {self.dt:.3e}     \n")
+            print(f"   lambda_FS  = {lambda_FS_NR:.3e}  (free-streaming)")
+            print(f"   lambda_phi = {lambda_phi_ini:.3e}  (Yukawa range)")
+            print(f"   Rmin       = {self.Rmin:.3e}")
+            print(f"   Rmax       = {self.Rmax:.3e}")
+            print("=" * 60)
             print(f" \n ICs took {time.time()-start:.5f} s\n")
-            print("=" * 60)
-
-
 
     # -----------------------------------------------------------------------
     #  Fermi-Dirac sampler
@@ -308,6 +310,52 @@ class Shells:
         )
         return weight
 
+    # -----------------------------------------------------------------------
+    # Background potential and effective mass
+    # -----------------------------------------------------------------------
+    def _solve_background(self, max_iter=100, tol=1e-5):
+        """
+        Solve for the self-consistent effective mass hat_m = hat_m0 + <hat_phi>
+        by iterating hat_m = hat_m0 / (1 + alpha/(4pi) * I(a, hat_m)), with
+               I(a, hat_m) = int dq q^2/(exp(q)+1) * 1/sqrt(q^2 + a^2*M^2)
+        This form guarantees hat_m > 0
+        Returns
+        -------
+        hat_m     : float   self-consistent effective mass  hat_m0 + <hat_phi>
+        phi_bg    : float   background <hat_phi> = hat_m - hat_m0
+                            Units are 1/T and g/T, respectively.
+        """
+        alpha  = self.alpha
+        m0     = self.m0_hat
+        a      = self.a
+
+        def I(M):
+            if M <= 0:
+                return np.inf
+            def integrand(q):
+                den = np.sqrt(q**2 + a**2 * M**2)
+                return q**2 / (np.exp(np.clip(q, 0, 500)) + 1) / den
+            result, _ = scipy.integrate.quad(integrand, 0, 30)
+            return result
+
+        # Initial guess: start from bare mass (phi=0)
+        M = m0
+
+        for i in range(max_iter):
+            M_new = m0 / (1.0 + alpha / (4.0 * np.pi) * I(M))
+
+            if M_new <= 0:
+                raise ValueError(f"M went negative at iteration {i}. "
+                                 f"alpha={alpha:.3e} may be too large.")
+
+            if abs(M_new - M) < tol * m0:
+                phi_bkg = M_new - m0       # always negative
+                return M_new, phi_bkg
+
+            M = M_new
+
+        raise ValueError(f"Background phi did not converge after {max_iter} iterations. "
+                         f"Last M={M:.6e}, m0={m0:.6e}")
 
     # -----------------------------------------------------------------------
     # Mass/energy update
@@ -336,8 +384,6 @@ class Shells:
             self.data['w'] * self.data['m'] / self.data['eps']
         )
 
-
-
     # -----------------------------------------------------------------------
     # Scale factor update
     # -----------------------------------------------------------------------
@@ -348,7 +394,6 @@ class Shells:
                            da/d(hat_eta) = sqrt(a) / m_phi_hat
         """
         self.a += self.dt * np.sqrt(self.a) / self.m_phi_hat
-
 
     # -----------------------------------------------------------------------
     # Sorting routine
@@ -384,16 +429,20 @@ class Shells:
         """
         dt = self.dt
         soft = self.soft
+        F_prev = self.F
         FP = self.alpha
 
-        def _accel():
-            ## TO REVIEW
-            solver = ForceSolver(self)
-            F      = solver.F_kernel  # dPhi_code/d(tilde_r) for each shell  [O(1)]
+        def _force():
 
-            ## Update hat_phi from the newly computed potential
-            #self.data['phi'] = solver.hat_phi
-            #self._update_mass()
+            # Here add interpolation!!
+            #
+            #
+            solver = ForceSolver(self)
+
+            # Update hat_phi from the newly computed potential
+            self.data['phi'] = solver.hat_phi
+            self._update_mass()
+            F = solver.F_kernel  # dPhi_code/d(tilde_r) for each shell  [O(1)]
 
             ## Free-streaming: tilde_ell^2 / (hat_eps * tilde_r^3)
             fs = self.data['ell']**2 / (self.data['eps'] * self.data['R']**3)
@@ -412,8 +461,7 @@ class Shells:
             return fs - lr - grav
 
         # -- Half kick --
-        accel = _accel()
-        self.data['q'] += 0.5 * dt * accel
+        self.data['q'] += 0.5 * dt * F_prev
         self._update_mass()
 
         # -- Full drift --
@@ -434,9 +482,9 @@ class Shells:
         #self._update_enclosed_mass() // For gravity 
 
         # -- Second half kick  --
-        accel = _accel()
-        self.data['q'] += 0.5 * dt * accel
-
+        F_new = _force()
+        self.F = F_new
+        self.data['q'] += 0.5 * dt * F_new
 
     # -----------------------------------------------------------------------
     # Free-streaming utility
@@ -453,7 +501,6 @@ class Shells:
         lambda_FS_H0 = I / np.sqrt(Omega_r)
 
         return lambda_FS_H0/self.m_phi_hat
-
 
     # -----------------------------------------------------------------------
     # Save configuration
@@ -473,7 +520,8 @@ class Shells:
                 self.data['m'], self.data['eps'],
                 self.data['w'], self.data['phi'],
             ]),
-            header=header
+            header=header,
+            fmt="%d %.3e %.3e %.3e %.3e %.3e %.3e %.3e"
         )
 
     # -----------------------------------------------------------------------
@@ -506,8 +554,6 @@ class Shells:
         self.data['w']   = raw[:,6]
         #self.data['phi'] = raw[:,7]
 
-
-
     # -----------------------------------------------------------------------
     # Diagnostics
     # -----------------------------------------------------------------------
@@ -525,9 +571,8 @@ class Shells:
         print(f"  <hat_eps>        = {np.mean(self.data['eps']):.4e}  (~O(1) relativistic)")
         print(f"  <a^2*hat_m^2>    = {np.mean(a**2*self.data['m']**2):.4e}  (<<1 if rel.)")
 
-
     # -----------------------------------------------------------------------
-    # Neutrino delta density profile 
+    # Neutrino number density
     # -----------------------------------------------------------------------
     def density(self, nbins=200):
         """
@@ -535,12 +580,11 @@ class Shells:
 
         Returns
         -------
-        r_c   : array  tilde_r bin centres
-        delta : array  (rho - rho_bar) / rho_bar
+        r_c : array  hat_r bin centres
+        n   : array  number density
         """
         self._sort()
         edges = np.geomspace(np.min(self.R), np.max(self.R), nbins + 1)
-        #edges = np.geomspace(self.Rmin, self.Rmax, nbins + 1)
         r_c   = np.sqrt(edges[:-1] * edges[1:])
         vol   = (4.0/3.0) * np.pi * (edges[1:]**3 - edges[:-1]**3)
 
@@ -551,7 +595,6 @@ class Shells:
         n      = np.full_like(r_c, np.nan)
         n[occ] = mass[occ] / vol[occ]
         return r_c, n
-
 
     # -----------------------------------------------------------------------
     # Properties
