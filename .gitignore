@@ -6,6 +6,9 @@ other/
 circles/
 jl/
 
+scripts/plot_contours.py
+scripts/double.py
+
 sort.py
 rho/
 output*/

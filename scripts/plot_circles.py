@@ -31,28 +31,37 @@ shells = Shells()
 shells._load(data_dir, 0)
 skip = 10 if shells.N > 1000 else 1
 
+rmin = shells.R.min()
+rmax = shells.R.max()
+
+w_thr = 0.05
+R_vals = shells.R[::skip]
+W_vals = shells.w[::skip]
+
+mask = W_vals > w_thr
+
 #q_vals = np.abs(shells.q[::skip])           # radial momentum (hat_q_r)
 q_vals = np.sqrt(shells.q[::skip]**2 + (shells.ell[::skip]/shells.R[::skip])**2)
 w_vals = shells.w[::skip]
 f_vals = w_vals / np.where(q_vals > 0, q_vals**2, np.inf)
 
-norm = mpl.colors.LogNorm(vmin=np.nanmin(f_vals[f_vals > 0]),
-                           vmax=np.nanmax(f_vals))
+#norm = mpl.colors.LogNorm(vmin=np.nanmin(f_vals[f_vals > 0]),
+#                           vmax=np.nanmax(f_vals))
 
+norm = mpl.colors.Normalize(vmin=np.nanmin(W_vals[mask]), vmax=np.nanmax(W_vals[mask]))
+#norm = mpl.colors.LogNorm(vmin=np.nanmin(W_vals[mask]), vmax=np.nanmax(W_vals[mask]))
 
 #norm = mpl.colors.LogNorm(vmin=shells.w.min(), vmax=shells.w.max())
-cmap = plt.get_cmap("Grays")
+cmap = plt.get_cmap("RdBu_r")
 
 plt.ion()
 fig, ax = plt.subplots(figsize=(8,8))
 sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
 fig.colorbar(sm, ax=ax, label=r"$w$")
 
-# Create circles once
-rmin = shells.R.min()
-rmax = shells.R.max()
 circles = []
-for r, w in zip(shells.R[::skip], shells.w[::skip]):
+#for r, w in zip(shells.R[::skip], shells.w[::skip]):
+for r, w in zip(R_vals[mask], W_vals[mask]):
     color = cmap(norm(w))
     c = Circle((0,0), r, fill=False, color=color, alpha=0.8)
     ax.add_patch(c)
@@ -76,7 +85,12 @@ for s in ax.spines.values():
 for i in range(len(files)):
     shells._load(data_dir, i)
 
-    for circle, r, w in zip(circles, shells.R[::skip], shells.w[::skip]):
+    R_vals = shells.R[::skip]
+    W_vals = shells.w[::skip]
+    mask = W_vals > w_thr
+
+    for circle, r, w in zip(circles, R_vals[mask], W_vals[mask]):
+    #for circle, r, w in zip(circles, shells.R[::skip], shells.w[::skip]):
         circle.set_radius(r)
         circle.set_color(cmap(norm(w)))
 

@@ -61,6 +61,7 @@ for i in range(len(files)):
 
     fig.canvas.draw()
     fig.canvas.flush_events()
+    plt.pause(speed)
 
 plt.ioff()
 plt.show()
