@@ -280,16 +280,15 @@ class Shells:
 
         Parameters
         ----------
-        r   : hat_r [1/H0]
-        dr  : radial bin width [1/H0]
+        r   : hat_r
+        dr  : radial bin width
         mu  : cos(theta) in [-1,1]
         q   : hat_q_total = q/T_nu, O(1)
         Psi : dimensionless Newtonian perturbation potential
 
         Returns
         -------
-        w : float, proportional to r^2 dr * q^2 * f(q) * (1 + dipole perturbation)
-            Units: [1/H0]^3 before normalisation (cancels after max-normalisation).
+        w : float, proportional to r^2 dr * q^2 * f(q) * (1 + perturbation)
 
         Perturbation from linearised Boltzmann equation:
             delta_f / f_0 = -(d ln f_0 / d ln q) * Psi * mu

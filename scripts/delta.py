@@ -53,6 +53,7 @@ for i in range(len(files)):
 
     r_c, n = shells.density()
     valid  = np.isfinite(n)
+    n_bar = np.nanmean(n[valid])
     line_n.set_data(r_c[valid], sn.gaussian_filter(n[valid]/n_bar, sigma=sig))
     line_phi.set_xdata([1/shells.a, 1/shells.a])
 
