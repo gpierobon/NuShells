@@ -26,7 +26,7 @@ print(f"Found {len(files)} field files")
 shells = Shells()
 shells._load(data_dir, 0)
 
-sig = 1.0
+sig = 0.1
 
 plt.ion()
 fig, ax = plt.subplots(1, 1, figsize=(8, 7))
@@ -43,8 +43,8 @@ line_phi = ax.axvline(1/shells.a, color='navy', lw=1.5, label=r'$\lambda_\phi$')
 ax.set_xlabel(r'$\hat{r}$')
 ax.set_ylabel(r'$\delta_\nu$')
 ax.legend()
-ax.set_xlim(5e-2, 1e4)
-ax.set_ylim(1e-1, 1e9)
+ax.set_xlim(1, 3e4)
+ax.set_ylim(5e-2, 1e3)
 
 title = fig.suptitle(r'$z=%.2f$' % (1/shells.a - 1))
 

@@ -45,13 +45,9 @@ q_vals = np.sqrt(shells.q[::skip]**2 + (shells.ell[::skip]/shells.R[::skip])**2)
 w_vals = shells.w[::skip]
 f_vals = w_vals / np.where(q_vals > 0, q_vals**2, np.inf)
 
-#norm = mpl.colors.LogNorm(vmin=np.nanmin(f_vals[f_vals > 0]),
-#                           vmax=np.nanmax(f_vals))
-
 norm = mpl.colors.Normalize(vmin=np.nanmin(W_vals[mask]), vmax=np.nanmax(W_vals[mask]))
 #norm = mpl.colors.LogNorm(vmin=np.nanmin(W_vals[mask]), vmax=np.nanmax(W_vals[mask]))
 
-#norm = mpl.colors.LogNorm(vmin=shells.w.min(), vmax=shells.w.max())
 cmap = plt.get_cmap("RdBu_r")
 
 plt.ion()
@@ -60,7 +56,6 @@ sm = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
 fig.colorbar(sm, ax=ax, label=r"$w$")
 
 circles = []
-#for r, w in zip(shells.R[::skip], shells.w[::skip]):
 for r, w in zip(R_vals[mask], W_vals[mask]):
     color = cmap(norm(w))
     c = Circle((0,0), r, fill=False, color=color, alpha=0.8)
@@ -90,7 +85,6 @@ for i in range(len(files)):
     mask = W_vals > w_thr
 
     for circle, r, w in zip(circles, R_vals[mask], W_vals[mask]):
-    #for circle, r, w in zip(circles, shells.R[::skip], shells.w[::skip]):
         circle.set_radius(r)
         circle.set_color(cmap(norm(w)))
 

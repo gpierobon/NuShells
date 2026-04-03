@@ -1,0 +1,15 @@
+Physics:
+
+- Gravity in first step
+- Save FS/LR/GR to compare
+- Timestep condition based on accelerations
+- Revisit ICs (perturbation)
+- Different sampling at IC?
+- Check m/m0 in time
+
+Optimisations:
+
+- Speedup update mass
+- Speedup computePhi
+- Convergence naive vs anderson
+

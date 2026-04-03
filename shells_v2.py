@@ -1,9 +1,13 @@
 import time
 import scipy
+import numba
+import numexpr
 import numpy as np
 import warnings
 
-from force import ForceSolver
+from timing import timed
+from force import solveForce
+from phi import solvePhi, interpPhi
 from constants import *
 
 
@@ -41,7 +45,9 @@ class Shells:
         self.m0        = None   # alias for m0_hat
         self.m_bkg     = None   # Effective mass in T units
         self.phi_bkg   = None   # <phi> in T/g units
-        self.F         = None   # Force kernel
+        self.phi_prev  = None   # <phi> in T/g units
+        self.F_fs      = None   # Force (free-streaming)
+        self.F_lr      = None   # Force (long-range Yukawa)
 
         # Grid bounds [tilde_r]
         self.Rmin  = None
@@ -55,6 +61,7 @@ class Shells:
         self.a_end  = None   # when force range shrinks below Rmin
 
 
+    @timed("Init")
     def init(self, Nshells,
              g       = 1e-26,
              m_phi   = 1e-29,    # eV
@@ -126,6 +133,7 @@ class Shells:
         m_bkg, phi_bkg = self._solve_background()
         self.m_bkg     = m_bkg
         self.phi_bkg   = phi_bkg
+        #self.phi_prev  = phi_bkg
 
         # -------------------------------------------------------------------
         # Length/time scales
@@ -188,7 +196,9 @@ class Shells:
             hat_ell = r * hat_qT
 
             # Initial hat_phi, guess is the background
-            hat_phi = self.phi_bkg
+            #hat_phi = self.phi_bkg
+            phi_guess = -0.01
+            hat_phi = phi_guess
 
             self.data['ID'][i]  = i
             self.data['R'][i]   = r
@@ -206,20 +216,19 @@ class Shells:
         self.data['w'] = np.maximum(self.data['w'], w_min)
 
         # -------------------------------------------------------------------
-        # Initial mass, energy, enclosed mass
+        # Compute initial hat_phi self-consistently 
+        # Then, mass, energy, enclosed mass are updated due to new phi value
         # -------------------------------------------------------------------
+        _ = solvePhi(self, method="anderson", tol=1e-5, verbose=verb)
+
         self._update_mass()
         self._update_enclosed_mass()
+        min_m = np.min(self.m/self.m0)
+        max_m = np.max(self.m/self.m0)
 
-        # -------------------------------------------------------------------
-        # Compute initial hat_phi self-consistently 
-        # -------------------------------------------------------------------
-        solver = ForceSolver(self)
-        self.data['phi'] = solver.hat_phi
-        self._update_mass()
-        fs = self.data['ell']**2 / (self.data['eps'] * self.data['R']**3)
-        lr = self.a**2 * self.alpha * self.data['m'] / self.data['eps'] * solver.F_kernel
-        self.F = fs - lr
+        acc_fs, acc_lr = solveForce(self)
+        self.F_fs = acc_fs
+        self.F_lr = acc_lr
 
         # -------------------------------------------------------------------
         # Summary print
@@ -237,6 +246,7 @@ class Shells:
             print(f"   H0      = {H0:.3e} eV")
             print(f"   Range   = {frange:.3e} Mpc\n")
             print(f"   alpha   = {self.alpha:.3e}  ")
+            print(f"   m/m0    = [{min_m:.5f}, {max_m:5f}]\n")
             print(f"   m_nu/T_nu = {self.m0_hat:.3e} ")
             print(f"   m_phi/H0  = {self.m_phi_hat:.3e}\n")
             print(f"   a_NR  = {a_NR:.3e}   ")
@@ -316,7 +326,6 @@ class Shells:
         """
         Solve for the self-consistent effective mass hat_m = hat_m0 + <hat_phi>
         by iterating hat_m = hat_m0 / (1 + alpha/(4pi) * I(a, hat_m)), with
-               I(a, hat_m) = int dq q^2/(exp(q)+1) * 1/sqrt(q^2 + a^2*M^2)
         This form guarantees hat_m > 0
         Returns
         -------
@@ -359,6 +368,7 @@ class Shells:
     # -----------------------------------------------------------------------
     # Mass/energy update
     # -----------------------------------------------------------------------
+    @timed("updateMass")
     def _update_mass(self):
         """
         """
@@ -397,6 +407,7 @@ class Shells:
     # -----------------------------------------------------------------------
     # Sorting routine
     # -----------------------------------------------------------------------
+    @timed("Sort")
     def _sort(self):
         """Sort shells in ascending hat_r order (stable / merge sort)."""
         idx = np.argsort(self.R, kind='stable')
@@ -407,7 +418,7 @@ class Shells:
     # -----------------------------------------------------------------------
     #  Time step: kick-drift-kick leapfrog
     # -----------------------------------------------------------------------
-    def step(self, include_yukawa=True): #, include_gravity=False, G_code=1.0):
+    def step(self, verb=False, method='anderson', tol=1e-5):
         """
         Advance by one tilde_eta step using kick-drift-kick (KDK) leapfrog.
 
@@ -428,40 +439,17 @@ class Shells:
         """
         dt = self.dt
         soft = self.soft
-        F_prev = self.F
-        FP = self.alpha
-
-        def _force():
-
-            # Here add interpolation!!
-            #
-            #
-            solver = ForceSolver(self)
-
-            # Update hat_phi from the newly computed potential
-            self.data['phi'] = solver.hat_phi
-            self._update_mass()
-            F = solver.F_kernel  # dPhi_code/d(tilde_r) for each shell  [O(1)]
-
-            ## Free-streaming: tilde_ell^2 / (hat_eps * tilde_r^3)
-            fs = self.data['ell']**2 / (self.data['eps'] * self.data['R']**3)
-
-            # Long-range: a^2 * alpha * hat_m / hat_eps * F_kernel
-            lr = np.zeros_like(fs)
-            if include_yukawa:
-                lr = self.a**2 * FP * self.data['m'] / self.data['eps'] * F
-
-            ## Gravity (optional): -G * M(<r) / tilde_r^2
-            grav = np.zeros_like(fs)
-            #if include_gravity:
-            #    M_enc = np.concatenate(([0.0], self._cumMass[:-1]))
-            #    grav  = G_code * M_enc / self.data['R']**2
-
-            return fs - lr - grav
+        F_fs_prev = self.F_fs
+        F_lr_prev = self.F_lr
+        ## ADD GRAV
 
         # -- Half kick --
-        self.data['q'] += 0.5 * dt * F_prev
+        self.data['q'] += 0.5 * dt * (F_fs_prev - F_lr_prev)
         self._update_mass()
+
+        # -- Store pre-drift state for phi interpolation --
+        R_old   = self.data['R'].copy()
+        phi_old = self.data['phi'].copy()
 
         # -- Full drift --
         self.data['R'] += dt * self.data['q'] / self.data['eps']
@@ -477,13 +465,27 @@ class Shells:
 
         # -- Update a and sort --
         self._update_a()
+        self._update_mass()
         self._sort()
         #self._update_enclosed_mass() // For gravity 
 
+        # -- Phi and Force updates
+        phi0_interp = interpPhi(R_old, phi_old, self.data['R'])
+        self.data['phi'] = phi0_interp
+        _ = solvePhi(self, method=method, tol=tol, verbose=verb)
+
+        self._update_mass()
+        self._update_enclosed_mass()
+        min_m = np.min(self.m/self.m0)
+        max_m = np.max(self.m/self.m0)
+
+        F_fs, F_lr = solveForce(self)
+        self.F_fs = F_fs
+        self.F_lr = F_lr
+        ## ADD GRAV
+
         # -- Second half kick  --
-        F_new = _force()
-        self.F = F_new
-        self.data['q'] += 0.5 * dt * F_new
+        self.data['q'] += 0.5 * dt * (F_fs - F_lr)
 
     # -----------------------------------------------------------------------
     # Free-streaming utility
@@ -504,6 +506,7 @@ class Shells:
     # -----------------------------------------------------------------------
     # Save configuration
     # -----------------------------------------------------------------------
+    @timed("I/O")
     def _save(self, path, step_index):
         """Save shell state to a text file."""
         header = (
@@ -526,6 +529,7 @@ class Shells:
     # -----------------------------------------------------------------------
     # Load configuration
     # -----------------------------------------------------------------------
+    @timed("I/O")
     def _load(self, path, step_index):
         """Load shell state from text file."""
         fname = f"{path}/shells_{step_index:05d}.txt"
