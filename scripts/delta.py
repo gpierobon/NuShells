@@ -16,7 +16,8 @@ from shells import Shells
 data_dir = sys.argv[1]
 speed    = float(sys.argv[2])
 
-pattern = os.path.join(data_dir, "shells_*.txt")
+pattern = os.path.join(data_dir, "shells_*.hdf5")
+#pattern = os.path.join(data_dir, "shells_*.txt")
 files   = sorted(glob.glob(pattern))
 if len(files) < 1:
     print(f"No field files found, check the output directory!")
@@ -24,7 +25,7 @@ if len(files) < 1:
 print(f"Found {len(files)} field files")
 
 shells = Shells()
-shells._load(data_dir, 0, hdf5_io=False)
+shells._load_hdf5(data_dir, 0,)
 
 sig = 2.0
 
@@ -49,7 +50,7 @@ ax.set_ylim(5e-2, 1e3)
 title = fig.suptitle(r'$z=%.2f$' % (1/shells.a - 1))
 
 for i in range(len(files)):
-    shells._load(data_dir, i, hdf5_io=False)
+    shells._load_hdf5(data_dir, i,)
 
     r_c, n = shells.density()
     valid  = np.isfinite(n)

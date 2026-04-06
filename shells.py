@@ -74,15 +74,15 @@ class Shells:
     @timed("Init")
     def init(self, Nshells,
              g        = 1e-26,
-             m_phi    = 1e-29,          # eV
+             m_phi    = 1e-29,          # e6
              m_nu     = 0.1,            # eV
              T_nu     = T_NU_EV,        # eV (defined in constants.py) 
              H0       = H0_EV,          # eV (defined in constants.py)
              kappa    = 0.75,           # a_ini = kappa * a_NR
              kappa2   = 0.75,           # a_end = kappa2 * 1 / R_min
-             dt_frac  = 0.01,           # dt = dt_frac * Rmin
+             dt_frac  = 0.3,            # Courant factor
              Psi0     = 1e-5,           # amplitude of initial perturbation
-             soft     = 1e-3,           # softening length
+             soft     = 1e-5,           # softening length
              iter_m   = 'anderson',     # method in phi iteration
              iter_tol = 1e-3,           # tolerance in phi iteration
              R0       = None,           # perturbation scale [1/m_phi]
@@ -103,7 +103,7 @@ class Shells:
         m_phi    : float  mediator mass [eV]          (default: 1e-29 eV)
         m_nu     : float  neutrino mass [eV]          (default: 0.1 eV)
         kappa    : float  a_ini = kappa * a_NR        (default 0.1)
-        dt_frac  : float  dt = dt_frac * sqrt(a_ini)  (default 0.01)
+        dt_frac  : float  dt = dt_frac * sqrt(soft/F) (default 0.3)
         Psi0     : float  amplitude of perturbation   (default: 1e-5)
         R0       : float  scale of perturbation
         w_min    : float  minimum weight floor
@@ -158,7 +158,7 @@ class Shells:
         if R0 is None:
             R0 = lambda_phi_ini
 
-        self.dt = dt_frac * self.Rmin
+        self.dt_frac = dt_frac
         self.soft = soft
 
         # -------------------------------------------------------------------
@@ -241,6 +241,8 @@ class Shells:
         self.data["F_fs"] = F_fs
         self.data["F_lr"] = F_lr
 
+        self.dt = self._update_dt()
+
         # -------------------------------------------------------------------
         # Summary print
         # -------------------------------------------------------------------
@@ -304,6 +306,29 @@ class Shells:
                            da/d(hat_eta) = sqrt(a) / m_phi_hat
         """
         self.a += self.dt * np.sqrt(self.a) / self.m_phi_hat
+
+
+    # -----------------------------------------------------------------------
+    # Time=step update
+    # -----------------------------------------------------------------------
+    def _update_dt(self):
+        """ Update timestep according to acceleration"""
+        F_tot = np.abs(self.F_fs - self.F_lr)
+
+        mask = F_tot > 0
+        dt_acc = np.full(self.N, np.inf)
+        dt_acc[mask] = np.sqrt(2 * self.soft / F_tot[mask])
+
+        #mask1 = self.F_fs > 0
+        #dt_acc1 = np.full(self.N, np.inf)
+        #dt_acc1[mask1] = np.sqrt(2 * self.soft / self.F_fs[mask1])
+
+        #mask2 = self.F_lr > 0
+        #dt_acc2 = np.full(self.N, np.inf)
+        #dt_acc2[mask2] = np.sqrt(2 * self.soft / self.F_lr[mask2])
+
+        return self.dt_frac * np.min(dt_acc)
+
 
     # -----------------------------------------------------------------------
     # Sorting routine
@@ -380,6 +405,7 @@ class Shells:
         self.data["F_fs"] = F_fs
         self.data["F_lr"] = F_lr
         ## ADD GRAV
+        self.dt = self._update_dt()
 
         # -- Second half kick  --
         self.data['q'] += 0.5 * dt * (F_fs - F_lr)
@@ -461,27 +487,32 @@ class Shells:
     def _load_hdf5(self, path, step_index):
         """Load shell state from hdf5 file."""
         with h5.File(f"{path}/shells_{step_index:05d}.hdf5", 'r') as f:
-            N = int(f['Header'].attrs['N'])
-            a = int(f['Header'].attrs['a'])
-            g = int(f['Header'].attrs['g'])
-            #...
+            self.a =  float(f['Header'].attrs['a'])
+            self.g =  float(f['Header'].attrs['g'])
+            self.m0 = float(f['Header'].attrs['m0'])
+            self.dt = float(f['Header'].attrs['dt'])
+            self.m_phi = float(f['Header'].attrs['m_phi'])
+            self.alpha = float(f['Header'].attrs['alpha'])
+            self.Rmin  = float(f['Header'].attrs['Rmin'])
+            self.Rmax  = float(f['Header'].attrs['Rmax'])
 
+            N =  int(f['Header'].attrs['N'])
             self.data = np.zeros(N, dtype=self._dtype)
 
-            self.data['ID']  = f['Data/ID']
-            self.data['R']  = f['Data/R']
-            self.data['q']  = f['Data/q']
-            self.data['m']  = f['Data/m']
-            self.data['w']  = f['Data/w']
+            self.data['ID']   = f['Data/ID']
+            self.data['R']    = f['Data/R']
+            self.data['q']    = f['Data/q']
+            self.data['m']    = f['Data/m']
+            self.data['w']    = f['Data/w']
             self.data['phi']  = f['Data/phi']
-            self.data['F_fs']  = f['Data/F_fs']
-            self.data['F_lr']  = f['Data/F_lr']
+            self.data['F_fs'] = f['Data/F_fs']
+            self.data['F_lr'] = f['Data/F_lr']
 
 
     @timed("I/O")
-    def _load(self, path, step_index, hdf5_io=True):
+    def _load(self, path, step_index):
         """Load shell state from text or hdf5 file."""
-        if hdf5_io:
+        if self.hdf5_io:
             self._load_hdf5(path, step_index)
         else:
             fname = f"{path}/shells_{step_index:05d}.txt"

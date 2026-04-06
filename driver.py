@@ -15,9 +15,10 @@ m_nu    = 0.1
 
 nmeas   = 100
 odir    = 'output'
+hdf5_io = True
 
 method  = 'anderson'
-tol     = 1e-3
+tol     = 1e-2
 seed    = 9
 
 
@@ -35,12 +36,12 @@ if __name__ == "__main__":
         Nshells,
         g=g,
         m_nu=m_nu,
-        dt_frac=0.005,
+        dt_frac=0.8,
         iter_m=method,
         iter_tol=tol,
         w_min=1e-12,
         kappa2=0.8,
-        hdf5_io=False,
+        hdf5_io=hdf5_io,
         verb=True
     )
 
