@@ -4,22 +4,21 @@ import shutil
 import numpy as np
 
 from timing import timed, report, reset, start_wall, stop_wall
-from shells_v2 import Shells
+from shells import Shells
 from force import solveForce
 from phi import solvePhi
 
 Nshells = 10_000
 nt      = 100_000
-g       = 1e-27
-m_nu    = 0.05
+g       = 1e-26
+m_nu    = 0.1
 
 nmeas   = 100
 odir    = 'output'
 
-method  = 'naive'
-tol     = 1e-2
+method  = 'anderson'
+tol     = 1e-3
 seed    = 9
-
 
 
 if __name__ == "__main__":
@@ -32,14 +31,24 @@ if __name__ == "__main__":
     saves = set(np.linspace(0, nt - 1, nmeas, dtype=int))
     np.random.seed(seed)
     shells = Shells()
-    shells.init(Nshells, g=g, m_nu=m_nu, dt_frac=0.005,\
-                w_min=1e-12, kappa2=0.8,verb=True)
+    shells.init(
+        Nshells,
+        g=g,
+        m_nu=m_nu,
+        dt_frac=0.005,
+        iter_m=method,
+        iter_tol=tol,
+        w_min=1e-12,
+        kappa2=0.8,
+        hdf5_io=False,
+        verb=True
+    )
 
     j = 0; t = 0
     pbar = tqdm.tqdm(total=1)
 
     while True:
-        shells.step(method=method, tol=tol)
+        shells.step()
 
         z = 1/shells.a - 1
         pbar.set_description(f"z={z:.1f}")

@@ -11,7 +11,7 @@ cdir = os.path.dirname(os.path.abspath(__file__))
 pdir = os.path.dirname(cdir)
 sys.path.append(pdir)
 
-from shells_v2 import Shells
+from shells import Shells
 
 data_dir = sys.argv[1]
 speed    = float(sys.argv[2])
@@ -24,9 +24,9 @@ if len(files) < 1:
 print(f"Found {len(files)} field files")
 
 shells = Shells()
-shells._load(data_dir, 0)
+shells._load(data_dir, 0, hdf5_io=False)
 
-sig = 0.1
+sig = 2.0
 
 plt.ion()
 fig, ax = plt.subplots(1, 1, figsize=(8, 7))
@@ -49,7 +49,7 @@ ax.set_ylim(5e-2, 1e3)
 title = fig.suptitle(r'$z=%.2f$' % (1/shells.a - 1))
 
 for i in range(len(files)):
-    shells._load(data_dir, i)
+    shells._load(data_dir, i, hdf5_io=False)
 
     r_c, n = shells.density()
     valid  = np.isfinite(n)

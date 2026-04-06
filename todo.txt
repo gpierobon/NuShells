@@ -1,7 +1,7 @@
 Physics:
 
+- Stepping log
 - Gravity in first step
-- Save FS/LR/GR to compare
 - Timestep condition based on accelerations
 - Revisit ICs (perturbation)
 - Different sampling at IC?

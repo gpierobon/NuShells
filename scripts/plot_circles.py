@@ -10,7 +10,7 @@ cdir = os.path.dirname(os.path.abspath(__file__))
 pdir = os.path.dirname(cdir)
 sys.path.append(pdir)
 
-from shells_v2 import Shells
+from shells import Shells
 from plot import circles
 
 data_dir = sys.argv[1]

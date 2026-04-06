@@ -6,10 +6,16 @@ other/
 circles/
 jl/
 
+docs/
+docs/_site/
+
 scripts/plot_contours.py
 scripts/double.py
 
+shells_legacy.py
 sort.py
+phi_numba.py
+bkg.py
 rho/
 output*/
 
