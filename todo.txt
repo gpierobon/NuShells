@@ -1,11 +1,10 @@
 Physics:
 
 - Stepping log
-- Gravity in first step
-- Timestep condition based on accelerations
+- Output file based on redshift
 - Revisit ICs (perturbation)
 - Different sampling at IC?
-- Check m/m0 in time
+- Contribution from infinity
 
 Optimisations:
 

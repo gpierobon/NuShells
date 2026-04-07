@@ -2,8 +2,8 @@ import numpy as np
 from timing import timed
 
 
-@timed("solveForce")
-def solveForce(shells, xi_cap=500.0):
+@timed("YukawaForce")
+def solveYukawaForce(shells, xi_cap=500.0):
     """
     """
     N = shells.N
@@ -38,3 +38,19 @@ def solveForce(shells, xi_cap=500.0):
     return fs, lr
 
 
+@timed("GravityForce")
+def solveGravityForce(shells):
+    """ """
+    a      = shells.a
+    R      = shells.R
+    eps    = shells.eps
+    beta   = shells.beta
+    rhobar = shells.rhobar
+
+    # M(<R_i) = cumulative sum of w_j * eps_j for R_j < R_i
+    M_enc  = shells._cumMass
+    M_mean = (4.0 * np.pi / 3.0) * R * rhobar
+
+    F_grav = beta * eps / a**2 * ( M_enc / R**2 - M_mean)
+
+    return F_grav

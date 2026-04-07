@@ -6,8 +6,8 @@ import warnings
 
 import ic
 from timing import timed
-from force import solveForce
 from phi import solvePhi, interpPhi
+from force import solveYukawaForce, solveGravityForce
 
 
 
@@ -17,6 +17,7 @@ Q_MEAN  = 3.1514               # <q/T_nu> for Fermi-Dirac distribution
 EV_2_PC = 1/(1.57e23)          # eV to pc conversion
 PC_2_M  = 3.08567758128e16     # pc to meter conversion
 H0_EV   = 1.444e-33            # Hubble constant today  [eV]
+M_PL    = 2.4e27               # Reduced Planck mass [eV]
 
 
 
@@ -35,7 +36,8 @@ class Shells:
             ('m',   np.float64),   # hat_m   = m_tilde / T_nu
             ('eps', np.float64),   # hat_eps = eps / T_nu
             ('F_fs', np.float64),  # Free-streaming term
-            ('F_lr', np.float64),  # Long-range term
+            ('F_lr', np.float64),  # Long-range force term
+            ('F_g',  np.float64),  # Gravirty force term
         ])
 
         self.data     = None
@@ -54,10 +56,13 @@ class Shells:
         self.H0     = None
 
         # Derived dimensionless quantities
-        self.alpha     = None   # g^2 * T^2 r_phi^2
+        self.alpha     = None   # g^2 * T^2 / m_phi^2
+        self.beta      = None   # T^4 / (m_phi^2 * m_pl^2)
+        self.eta       = None   # beta / alpha
         self.hat_M_phi = None   # M_phi / H0
         self.m0_hat    = None   # m_nu / T_nu 
         self.m0        = None   # alias for m0_hat
+        self.rhobar    = None   # 
 
         # Grid bounds [tilde_r]
         self.Rmin  = None
@@ -116,7 +121,7 @@ class Shells:
         self.iter_tol = iter_tol
 
         # -------------------------------------------------------------------
-        # Store eV inputs for reference
+        # Store eV inputs for reference and check g
         # -------------------------------------------------------------------
         self.g     = g
         self.m_phi = m_phi
@@ -126,11 +131,15 @@ class Shells:
         self.H0    = H0
         frange = self.r_phi*EV_2_PC*1e-6 # Mpc
 
+        self._check_g()
+
         # -------------------------------------------------------------------
         # Derived dimensionless ratios
         # -------------------------------------------------------------------
-        self.alpha     = g**2 * m_nu**2 / m_phi**2
-        self.m_phi_hat = m_phi / H0       # for the da/d(tilde_eta) update
+        self.alpha     = g**2 * T_nu**2 / m_phi**2
+        self.beta      = self.T_nu**4 / (self.m_phi**2 * M_PL**2)
+        self.eta       = self.beta / self.alpha
+        self.m_phi_hat = m_phi / H0          # for the da/d(tilde_eta) update
         self.m0_hat    = m_nu  / T_nu
         self.m0        = self.m0_hat
 
@@ -233,13 +242,17 @@ class Shells:
 
         self._update_mass()
         self._update_cumMass()
+        self._update_rhobar()
+
         min_m = np.min(self.m/self.m0)
         max_m = np.max(self.m/self.m0)
 
         # Commit forces for the first half-kick
-        F_fs, F_lr = solveForce(self)
+        F_fs, F_lr = solveYukawaForce(self)
+        F_g = solveGravityForce(self)
         self.data["F_fs"] = F_fs
         self.data["F_lr"] = F_lr
+        self.data["F_g"]  = F_g
 
         self.dt = self._update_dt()
 
@@ -259,6 +272,8 @@ class Shells:
             print(f"   H0      = {H0:.3e} eV")
             print(f"   Range   = {frange:.3e} Mpc\n")
             print(f"   alpha   = {self.alpha:.3e}  ")
+            print(f"   beta    = {self.beta:.3e}  ")
+            print(f"   eta     = {self.eta:.3e}  ")
             print(f"   m/m0    = [{min_m:.5f}, {max_m:5f}]\n")
             print(f"   m_nu/T_nu = {self.m0_hat:.3e} ")
             print(f"   m_phi/H0  = {self.m_phi_hat:.3e}\n")
@@ -291,10 +306,33 @@ class Shells:
     @timed("update_cumMass")
     def _update_cumMass(self):
         """
-        Cumulative sum M(<tilde_r) = sum_{R_i <= tilde_r} w_i * m_i / eps_i
+        Cumulative sum M(<tilde_r) = sum_{R_i <= tilde_r} w_i * eps_i
         Assumes data is already sorted ascending by R.
         """
-        self._cumMass = np.cumsum(self.w * self.m / self.eps)
+        self._cumMass = np.cumsum(self.w * self.eps)
+
+
+    # -----------------------------------------------------------------------
+    # Compute background neutrino energy density
+    # -----------------------------------------------------------------------
+    @timed("update_rhobar")
+    def _update_rhobar(self):
+        """
+        Compute dimensionless background energy density
+        rho_bar = a^4 * rho_nu / T^4
+                = 1/(2pi^2) * int q^2 * eps(q) * f0(q) dq
+        In the ultra-relativistic limit this is 7*pi^2/120 (constant).
+        """
+        a  = self.a
+        m0 = self.m0
+
+        def integrand(q):
+            ep = np.sqrt(q**2 + (a * m0)**2)
+            return q**2 * ep / (np.exp(np.clip(q, 0, 500)) + 1.0)
+
+        result, _ = scipy.integrate.quad(integrand, 0, 30)
+        self.rhobar = result / (2.0 * np.pi**2)
+
 
     # -----------------------------------------------------------------------
     # Scale factor update
@@ -363,10 +401,10 @@ class Shells:
         soft = self.soft
         F_fs_prev = self.F_fs
         F_lr_prev = self.F_lr
-        ## ADD GRAV
+        F_g_prev = self.F_lr
 
         # -- Half kick --
-        self.data['q'] += 0.5 * dt * (F_fs_prev - F_lr_prev)
+        self.data['q'] += 0.5 * dt * (F_fs_prev - F_lr_prev - F_g_prev)
         self._update_mass()
 
         # -- Store pre-drift state for phi interpolation --
@@ -385,30 +423,35 @@ class Shells:
         self.data['R'][hi]  = 2.0*self.Rmax - self.data['R'][hi]
         self.data['q'][hi] *= -1.0
 
-        # -- Update a and sort --
+        # -- Sort and updates --
+        self._sort()
         self._update_a()
         self._update_mass()
-        self._sort()
-        #self._update_cumMmass() // For gravity 
+        self._update_cumMass()
+        self._update_rhobar()
 
         # -- Phi and Force updates
         phi0_interp = interpPhi(R_old, phi_old, self.data['R'])
         self.data['phi'] = phi0_interp
-        _ = solvePhi(self, method=self.iter_m, tol=self.iter_tol, verbose=verb)
+        _ = solvePhi(self, method=self.iter_m,\
+                     tol=self.iter_tol, verbose=verb)
 
         self._update_mass()
         self._update_cumMass()
+        self._update_rhobar()
         min_m = np.min(self.m/self.m0)
         max_m = np.max(self.m/self.m0)
 
-        F_fs, F_lr = solveForce(self)
+        F_fs, F_lr = solveYukawaForce(self)
+        F_g = solveGravityForce(self)
         self.data["F_fs"] = F_fs
         self.data["F_lr"] = F_lr
-        ## ADD GRAV
+        self.data["F_lr"] = F_g
         self.dt = self._update_dt()
 
         # -- Second half kick  --
-        self.data['q'] += 0.5 * dt * (F_fs - F_lr)
+        self.data['q'] += 0.5 * dt * (F_fs - F_lr - F_g)
+        self._update_mass()
 
 
     # -----------------------------------------------------------------------
@@ -426,6 +469,28 @@ class Shells:
         lambda_FS_H0 = I / np.sqrt(Omega_r)
 
         return lambda_FS_H0/self.m_phi_hat
+
+
+    # -----------------------------------------------------------------------
+    # Check g utility
+    # -----------------------------------------------------------------------
+    def _check_g(self):
+        """
+        Checks magnitude of g to enforce the right parameter space
+        for the long rangbe force to have an effect
+        Based on Eqs. (4), (6) in https://arxiv.org/pdf/2412.20766
+        """
+        # Gravity check
+        f_nu = 0.0045 * self.m_nu / 0.06
+        gc1 = self.m_nu / (M_PL * np.sqrt(f_nu))
+
+        # mphi check
+        gc2 = 12 * self.m_phi / self.m_nu
+
+        # Get the max as a minimum requirement
+        gc = max(gc1, gc2)
+        if gc >= self.g:
+            raise RuntimeError(f"Set g larger than {gc:.3e}!")
 
 
     # -----------------------------------------------------------------------
@@ -591,6 +656,8 @@ class Shells:
     def F_fs(self):  return self.data['F_fs']
     @property
     def F_lr(self):  return self.data['F_lr']
+    @property
+    def F_g(self):  return self.data['F_g']
     @property
     def N(self):    return len(self.data)
 

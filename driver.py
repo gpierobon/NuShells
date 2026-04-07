@@ -5,11 +5,11 @@ import numpy as np
 
 from timing import timed, report, reset, start_wall, stop_wall
 from shells import Shells
-from force import solveForce
-from phi import solvePhi
+from phi import solvePhi, interpPhi
+from force import solveYukawaForce, solveGravityForce
 
-Nshells = 10_000
-nt      = 100_000
+Nshells = 100
+nt      = 10_000
 g       = 1e-26
 m_nu    = 0.1
 
@@ -19,6 +19,7 @@ hdf5_io = True
 
 method  = 'anderson'
 tol     = 1e-2
+soft    = 1e-2
 seed    = 9
 
 
@@ -39,6 +40,7 @@ if __name__ == "__main__":
         dt_frac=0.8,
         iter_m=method,
         iter_tol=tol,
+        soft=soft,
         w_min=1e-12,
         kappa2=0.8,
         hdf5_io=hdf5_io,
