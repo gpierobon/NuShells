@@ -64,6 +64,7 @@ nav_order: 2
 | `eps` | `self.eps` | — | Energy `= sqrt(q^2 + ell^2/R^2 + a^2 m^2)` |
 | `F_fs` | `self.F_fs` | — | Free-streaming acceleration `= ell^2 / (eps * R^3)` |
 | `F_lr` | `self.F_lr` | — | Yukawa (long-range) acceleration |
+| `F_g` | `self.F_g` | — | Gravitational acceleration |
 
 ### Initial condition parameters
 
