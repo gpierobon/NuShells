@@ -6,7 +6,6 @@ other/
 circles/
 jl/
 
-docs/
 docs/_site/
 
 scripts/plot_contours.py

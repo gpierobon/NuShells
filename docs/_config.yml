@@ -1,0 +1,9 @@
+title: NuShells
+theme: just-the-docs
+url: "https://gpierobon.github.io"
+baseurl: "/NuShells"
+
+markdown: kramdown
+kramdown:
+  math_engine: mathjax
+  syntax_highlighter: rouge

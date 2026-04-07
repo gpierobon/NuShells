@@ -1,0 +1,26 @@
+// _sass/custom/custom.scss
+
+// ── Inline code ───────────────────────────────────────────────────────────────
+code {
+  background-color: $grey-lt-200;
+  border-radius: 8px;
+  padding: 0.35em 0.4em;
+  font-size: 0.875em;
+}
+
+// ── Code blocks ───────────────────────────────────────────────────────────────
+div.highlighter-rouge,
+figure.highlight {
+  background-color: $grey-lt-200;
+  border-radius: 8px;
+  padding: 1em 2.25em;
+  margin: 1em 0;
+  overflow-x: auto;
+
+  pre, code {
+    background-color: transparent;
+    border: none;
+    font-size: 0.85em;
+    padding: 0;
+  }
+}
