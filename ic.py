@@ -27,7 +27,7 @@ def sample_q(shells, N):
 # -----------------------------------------------------------------------
 # Weight computation
 # -----------------------------------------------------------------------
-def compute_weight(r, dr, mu, q, Psi):
+def compute_weights(r, dr, mu, q, Psi):
     """
     Phase-space weight for one shell.
 
@@ -63,3 +63,26 @@ def compute_weight(r, dr, mu, q, Psi):
     return weight
 
 
+def get_profile(r, Psi0, R0, ptype='gaussian', rmax=None):
+    rho = r/R0
+    if ptype == 'gaussian':
+        prof = Psi0 * np.exp(-0.5*rho**2)
+    elif ptype == 'gaussian_c':
+        prof = Psi0 * (1.0 - 2.0/3.0*rho**2) * np.exp(-rho**2)
+    elif ptype == 'exp_c':
+        prof = Psi0 * (1.0 - 2.0/3.0*rho) * np.exp(-2.0*rho)
+    elif ptype == 'poly_c':
+        prof = Psi0 * 2.0/6.0 * (3 - rho**4) / (1 + rho**4)**2
+    elif ptype == 'tophat':
+        prof = np.zeros(len(r))
+        prof[r < R0] = Psi0
+    elif ptype == 'tophat_c':
+        if rmax is None:
+            rmax = 2*R0
+        rhomax = rmax/R0
+        prof = np.zeros(len(r))
+        prof[r < R0] = Psi0
+        prof[(r > R0) & (r < rmax)] = - Psi0 / (rhomax**3-1)
+    else:
+        raise ValueError(f"Profile {ptype} not recognised")
+    return prof

@@ -47,11 +47,11 @@ line_n,   = ax.loglog(r_c[valid], sn.gaussian_filter(n[valid]/n_bar, sigma=sig),
 line_nbar = ax.axhline(n_bar/n_bar, color='k', lw=2, ls='--',alpha=0.6)
 line_phi = ax.axvline(1/shells.a, color='navy', lw=1.5, label=r'$\lambda_\phi$')
 
-ax.set_xlabel(r'$\hat{r}$')
+ax.set_xlabel(r'$rm_\phi$')
 ax.set_ylabel(r'$\delta_\nu$')
 ax.legend()
-ax.set_xlim(1, 1.1 * shells.Rmax)
-ax.set_ylim(1e-1, 10)
+ax.set_xlim(5, 1.1 * shells.Rmax)
+ax.set_ylim(1e-1, 100)
 
 title = fig.suptitle(r'$z=%.2f$' % (1/shells.a - 1))
 
@@ -63,6 +63,7 @@ for i in range(len(files)):
     n_bar = np.nanmean(n[valid])
     line_n.set_data(r_c[valid], sn.gaussian_filter(n[valid]/n_bar, sigma=sig))
     line_phi.set_xdata([1/shells.a, 1/shells.a])
+    #ax.set_xlim(1/shells.a, 1.1 * shells.Rmax) # Show only scales larger than r_phi
 
     z = 1/shells.a - 1
     title.set_text(r'$z=%.2f$' % z)

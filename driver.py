@@ -8,19 +8,33 @@ from shells import Shells
 from phi import solvePhi, interpPhi
 from force import solveYukawaForce, solveGravityForce
 
-Nshells = 100
-nt      = 10_000
+# Main params
+Nshells = 1000
 g       = 1e-26
 m_nu    = 0.1
+m_phi   = 1e-29
 
+# Times
+nt      = 10000
+dt_frac = 0.5
+kappa   = 0.75
+kappa2  = 1.0
+
+# Initial conditions
+Psi0    = 1e-5
+ic_type = 'tophat'
+w_min   = 1e-12
+seed    = 9
+
+# Outputs
 nmeas   = 100
 odir    = 'output'
 hdf5_io = True
 
+# Iteration
 method  = 'anderson'
 tol     = 1e-2
 soft    = 1e-2
-seed    = 9
 
 
 if __name__ == "__main__":
@@ -30,22 +44,12 @@ if __name__ == "__main__":
         shutil.rmtree(odir)
     os.makedirs(odir)
 
-    saves = set(np.linspace(0, nt - 1, nmeas, dtype=int))
-    np.random.seed(seed)
     shells = Shells()
-    shells.init(
-        Nshells,
-        g=g,
-        m_nu=m_nu,
-        dt_frac=0.8,
-        iter_m=method,
-        iter_tol=tol,
-        soft=soft,
-        w_min=1e-12,
-        kappa2=0.8,
-        hdf5_io=hdf5_io,
-        verb=True
-    )
+    shells.init(Nshells, g=g, m_phi=m_phi, m_nu=m_nu, kappa=kappa, kappa2=kappa2,
+                dt_frac=dt_frac, iter_m=method, iter_tol=tol, soft=soft,
+                w_min=w_min, hdf5_io=hdf5_io, seed=seed, verb=True)
+
+    saves = set(np.linspace(0, nt - 1, nmeas, dtype=int))
 
     j = 0; t = 0
     pbar = tqdm.tqdm(total=1)

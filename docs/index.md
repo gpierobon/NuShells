@@ -20,7 +20,7 @@ A spherical shell N-body code for simulating collisionless neutrino dynamics wit
 - ✅ **Geometric radial grid** — shells placed on `geomspace(Rmin, Rmax)`
 - ✅ **Reflecting boundary conditions at infinity** — shells softened at `soft` and bouncing at `Rmax`
 - ✅ **Fermi-Dirac initial conditions** — momentum samples drawn from FD distribution, angular momentum assigned via random sampling
-- ✅ **Gaussian perturbation** — linearised Boltzmann perturbation for weight calculation
+- ✅ **Generic perturbation profile** — Gaussian, top-hat, poly, exponential and compensated
 
 ### Evolution
 
@@ -55,7 +55,6 @@ A spherical shell N-body code for simulating collisionless neutrino dynamics wit
 
 - **Stepping log**: Record `a`, `dt`, min/max `m/m0`, iterations per step
 - **Output file**: Based on redshift, instead of measurements every X steps
-- **Revisit ICs (perturbation)**: Change initial perturbation profile and amplitude
 - **Boundary term**: Add contribution from infinity for phi and Yukawa force
 - **Alternative IC sampling**: Explore PSD-proportional radial sampling
 - **Convergence tests in the iteration**: Naive vs anderson check

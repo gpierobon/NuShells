@@ -38,6 +38,7 @@ class Shells:
             ('F_fs', np.float64),  # Free-streaming term
             ('F_lr', np.float64),  # Long-range force term
             ('F_g',  np.float64),  # Gravirty force term
+            ('prof', np.float64),  # Initial perturbation profile
         ])
 
         self.data     = None
@@ -67,6 +68,7 @@ class Shells:
         # Grid bounds [tilde_r]
         self.Rmin  = None
         self.Rmax  = None
+        self.R0    = None
 
         # Time
         self.a      = None
@@ -77,22 +79,25 @@ class Shells:
 
 
     @timed("Init")
-    def init(self, Nshells,
+    def init(self,
+             Nshells  = 1000,
              g        = 1e-26,
-             m_phi    = 1e-29,          # e6
+             m_phi    = 1e-29,          # eV
              m_nu     = 0.1,            # eV
              T_nu     = T_NU_EV,        # eV (defined in constants.py) 
              H0       = H0_EV,          # eV (defined in constants.py)
              kappa    = 0.75,           # a_ini = kappa * a_NR
              kappa2   = 0.75,           # a_end = kappa2 * 1 / R_min
              dt_frac  = 0.3,            # Courant factor
+             ic_type  = 'gaussian',     # IC profile
              Psi0     = 1e-5,           # amplitude of initial perturbation
+             R0       = None,           # perturbation scale [1/m_phi]
              soft     = 1e-5,           # softening length
              iter_m   = 'anderson',     # method in phi iteration
              iter_tol = 1e-3,           # tolerance in phi iteration
-             R0       = None,           # perturbation scale [1/m_phi]
              w_min    = None,           # weight floor
              hdf5_io  = False,          # HDF5 I/O
+             seed     = 9,              # IC seed
              verb     = False           # Print summary 
             ):
         """
@@ -103,7 +108,7 @@ class Shells:
 
         Parameters
         ----------
-        Nshells  : int    number of shells
+        Nshells  : int    number of shells            (default: 1000)
         g        : float  coupling constant           (default: 1e-26)
         m_phi    : float  mediator mass [eV]          (default: 1e-29 eV)
         m_nu     : float  neutrino mass [eV]          (default: 0.1 eV)
@@ -119,6 +124,7 @@ class Shells:
         self.hdf5_io  = hdf5_io
         self.iter_m   = iter_m
         self.iter_tol = iter_tol
+        np.random.seed(seed)
 
         # -------------------------------------------------------------------
         # Store eV inputs for reference and check g
@@ -161,11 +167,12 @@ class Shells:
                          (1.0/np.sqrt(a_ini) - 1.0/np.sqrt(a_NR))
 
         self.Rmin  = 0.01 * lambda_phi_ini
-        self.Rmax  = 50.0 * max(lambda_phi_ini, lambda_FS_NR)
+        self.Rmax  = 10.0 * max(lambda_phi_ini, lambda_FS_NR)
         self.a_end = 1.0 / self.Rmin * kappa2
 
         if R0 is None:
             R0 = lambda_phi_ini
+        self.R0    = R0
 
         self.dt_frac = dt_frac
         self.soft = soft
@@ -184,45 +191,31 @@ class Shells:
         dr[:-1] = r_grid[1:] - r_grid[:-1]
         dr[-1]  = dr[-2]
 
-        q_total = ic.sample_q(self, Nshells)
-        mu_samples  = np.random.uniform(-1.0, 1.0, Nshells)  # cos(theta)
+        q_arr  = ic.sample_q(self, Nshells)
+        mu_arr = np.random.uniform(-1.0, 1.0, Nshells)  # cos(theta)
 
-        self.data = np.zeros(Nshells, dtype=self._dtype)
+        # Compute 
+        Psi = ic.get_profile(r_grid, Psi0, R0, ptype=ic_type)
+        weights = ic.compute_weights(r_grid, dr, mu_arr, q_arr, Psi)
 
+        # Radial and angular momentum
+        hat_qr = q_arr * mu_arr
+        hat_qT = q_arr * np.sqrt(np.maximum(1.0 - mu_arr**2, 0.0))
+        hat_ell = r_grid * hat_qT
+
+        # Initial guess for Yukawa potential
         phi_guess = -0.01
 
-        # -------------------------------------------------------------------
-        # Initialisation loop
-        # -------------------------------------------------------------------
-        for i in range(Nshells):
-            r    = r_grid[i]
-            dr_i = dr[i]
-            q    = q_total[i]
-            mu   = mu_samples[i]
+        # Initialiase data structure
+        self.data = np.zeros(Nshells, dtype=self._dtype)
+        self.data['ID']   = np.arange(Nshells)
+        self.data['R']    = r_grid
+        self.data['q']    = hat_qr
+        self.data['ell']  = hat_ell
+        self.data['w']    = weights
+        self.data['phi']  = np.full(Nshells, phi_guess)
+        self.data['prof'] = Psi
 
-            # Initial dimensionless Newtonian potential (Gaussian profile)
-            #Psi = ic.get_profile(ptype=ic_prof, Psi0, R0) ## TODO
-            Psi = Psi0 * np.exp(-r**2 / (2.0 * R0**2))
-
-            # Weight (dimensionless, factor (T_nu/M_phi)^3)
-            w_i = ic.compute_weight(r, dr_i, mu, q, Psi)
-
-            # Radial momentum (hat_q_r)
-            hat_qr = q * mu
-
-            # Angular momentum  hat_ell = hat_r * hat_q_T
-            hat_qT = q * np.sqrt(max(1.0 - mu**2, 0.0))
-            hat_ell = r * hat_qT
-
-            # Initial hat_phi, guess is the background
-            hat_phi = phi_guess
-
-            self.data['ID'][i]  = i
-            self.data['R'][i]   = r
-            self.data['q'][i]   = hat_qr
-            self.data['ell'][i] = hat_ell
-            self.data['w'][i]   = w_i
-            self.data['phi'][i] = hat_phi
 
         # -------------------------------------------------------------------
         # Normalise weights 
@@ -658,6 +651,8 @@ class Shells:
     def F_lr(self):  return self.data['F_lr']
     @property
     def F_g(self):  return self.data['F_g']
+    @property
+    def prof(self):  return self.data['prof']
     @property
     def N(self):    return len(self.data)
 

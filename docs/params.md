@@ -11,6 +11,7 @@ nav_order: 2
 
 | Symbol | Code name | Unit | Description |
 |--------|-----------|------|-------------|
+| `Nshells` | `self.Nshells` | — | Number of shells |
 | `g` | `self.g` | — | Yukawa coupling constant |
 | `m_phi` | `self.m_phi` | eV | Mediator (scalar field) mass |
 | `m_nu` | `self.m_nu` | eV | Neutrino mass |
@@ -70,8 +71,9 @@ nav_order: 2
 
 | Symbol | Code name | Description |
 |--------|-----------|-------------|
-| `Psi0` | — | Amplitude of initial Gaussian gravitational perturbation |
-| `R0` | — | Scale of initial perturbation (default: `lambda_phi` at `a_ini`) |
+| `ic_type` | `self.ic_type` | Initial perturbation profile |
+| `Psi0` | — | Amplitude of initial perturbation |
+| `R0` | `self.R0` | Scale of initial perturbation (default: `lambda_phi` at `a_ini`) |
 | `w_min` | — | Floor on shell weights after normalisation (default: `1e-3`) |
 
 ### Solver parameters
