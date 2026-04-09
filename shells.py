@@ -6,6 +6,7 @@ import warnings
 
 import ic
 from timing import timed
+from logger import createLog
 from phi import solvePhi, interpPhi
 from force import solveYukawaForce, solveGravityForce
 
@@ -41,12 +42,14 @@ class Shells:
             ('prof', np.float64),  # Initial perturbation profile
         ])
 
-        self.data     = None
-        self.inv_cdf  = None
-        self.cumMass  = None
-        self.hdf5_io  = None
-        self.iter_m   = None
-        self.iter_tol = None
+        self.data       = None
+        self.inv_cdf    = None
+        self.cumMass    = None
+        self.hdf5_io    = None
+        self.iter_m     = None
+        self.iter_tol   = None
+        self.log        = None
+        self.verb       = None
 
         # Physical inputs [eV]
         self.g      = None
@@ -55,6 +58,7 @@ class Shells:
         self.m_nu   = None
         self.T_nu   = None
         self.H0     = None
+        self.frange = None
 
         # Derived dimensionless quantities
         self.alpha     = None   # g^2 * T^2 / m_phi^2
@@ -72,8 +76,11 @@ class Shells:
 
         # Time
         self.a      = None
+        self.a_NR   = None
         self.eta    = None
         self.dt     = None
+        self.curr   = None
+        self.meas   = None
         self.a_ini  = None
         self.a_end  = None   # when force range shrinks below Rmin
 
@@ -98,7 +105,9 @@ class Shells:
              w_min    = None,           # weight floor
              hdf5_io  = False,          # HDF5 I/O
              seed     = 9,              # IC seed
-             verb     = False           # Print summary 
+             odir     = 'output',       # Output directory
+             verb     = 0,              # Verbosity level
+             to_file  = True            # Log to file instead of print
             ):
         """
         Initialise N shells in dimensionless units.
@@ -121,6 +130,8 @@ class Shells:
         """
 
         start = time.time()
+        self.verb = verb
+        self.log = createLog(self.verb, toFile=to_file)
         self.hdf5_io  = hdf5_io
         self.iter_m   = iter_m
         self.iter_tol = iter_tol
@@ -135,7 +146,7 @@ class Shells:
         self.m_nu  = m_nu
         self.T_nu  = T_nu
         self.H0    = H0
-        frange = self.r_phi*EV_2_PC*1e-6 # Mpc
+        self.frange = self.r_phi*EV_2_PC*1e-6 # Mpc
 
         self._check_g()
 
@@ -152,27 +163,29 @@ class Shells:
         # -------------------------------------------------------------------
         # Scale factors
         # -------------------------------------------------------------------
-        a_NR       = 1.0 / self.m0_hat
-        a_ini      = kappa * a_NR
+        self.a_NR  = 1.0 / self.m0_hat
+        a_ini      = kappa * self.a_NR
         self.a     = a_ini
         self.a_ini = a_ini
         self.eta   = 2/H0*np.sqrt(self.a)
+        self.curr  = 0
+        self.meas  = 0
 
         # -------------------------------------------------------------------
         # Length/time scales
         # -------------------------------------------------------------------
-        lambda_phi_ini = 1.0 / a_ini
-        lambda_FS_rad  = self._lambdaFS_rad()
-        lambda_FS_NR   = lambda_FS_rad + 2.0 / self.m_phi_hat * \
-                         (1.0/np.sqrt(a_ini) - 1.0/np.sqrt(a_NR))
+        self.l_phi = 1.0 / a_ini
+        l_fs_rad   = self._lambdaFS_rad()
+        self.l_fs  = l_fs_rad + 2.0 / self.m_phi_hat * \
+                         (1.0/np.sqrt(a_ini) - 1.0/np.sqrt(self.a_NR))
 
-        self.Rmin  = 0.01 * lambda_phi_ini
-        self.Rmax  = 10.0 * max(lambda_phi_ini, lambda_FS_NR)
+        self.Rmin  = 0.01 * self.l_phi
+        self.Rmax  = 10.0 * max(self.l_phi, self.l_fs)
         self.a_end = 1.0 / self.Rmin * kappa2
 
         if R0 is None:
-            R0 = lambda_phi_ini
-        self.R0    = R0
+            R0 = self.l_phi
+        self.R0 = R0
 
         self.dt_frac = dt_frac
         self.soft = soft
@@ -195,8 +208,8 @@ class Shells:
         mu_arr = np.random.uniform(-1.0, 1.0, Nshells)  # cos(theta)
 
         # Compute 
-        Psi = ic.get_profile(r_grid, Psi0, R0, ptype=ic_type)
-        weights = ic.compute_weights(r_grid, dr, mu_arr, q_arr, Psi)
+        Psi = ic.get_profile(r_grid, Psi0, R0, self.log, ptype=ic_type)
+        weights = ic.compute_weights(r_grid, dr, mu_arr, q_arr, Psi, self.log)
 
         # Radial and angular momentum
         hat_qr = q_arr * mu_arr
@@ -215,6 +228,7 @@ class Shells:
         self.data['w']    = weights
         self.data['phi']  = np.full(Nshells, phi_guess)
         self.data['prof'] = Psi
+        self.log.debug("Arrays created!")
 
 
         # -------------------------------------------------------------------
@@ -252,35 +266,9 @@ class Shells:
         # -------------------------------------------------------------------
         # Summary print
         # -------------------------------------------------------------------
-        if verb:
-            print("")
-            print("=" * 60)
-            print("  Simulation parameters")
-            print("=" * 60)
-            print(f" \n   Nshells = {self.N}\n")
-            print(f"   g       = {g:.3e}")
-            print(f"   m_phi   = {m_phi:.3e} eV")
-            print(f"   m_nu    = {m_nu:.3e} eV")
-            print(f"   T_nu    = {T_nu:.3e} eV")
-            print(f"   H0      = {H0:.3e} eV")
-            print(f"   Range   = {frange:.3e} Mpc\n")
-            print(f"   alpha   = {self.alpha:.3e}  ")
-            print(f"   beta    = {self.beta:.3e}  ")
-            print(f"   eta     = {self.eta:.3e}  ")
-            print(f"   m/m0    = [{min_m:.5f}, {max_m:5f}]\n")
-            print(f"   m_nu/T_nu = {self.m0_hat:.3e} ")
-            print(f"   m_phi/H0  = {self.m_phi_hat:.3e}\n")
-            print(f"   a_NR  = {a_NR:.3e}   ")
-            print(f"   a_ini = {self.a_ini:.3e}  (z={z_ini:.1f})")
-            print(f"   a_end = {self.a_end:.3e}  (z={z_end:.1f})")
-            print(f"   dt    = {self.dt:.3e}     \n")
-            print(f"   lambda_FS  = {lambda_FS_NR:.3e}  (free-streaming)")
-            print(f"   lambda_phi = {lambda_phi_ini:.3e}  (Yukawa range)")
-            print(f"   Rmin       = {self.Rmin:.3e}")
-            print(f"   Rmax       = {self.Rmax:.3e}\n")
-            print("=" * 60)
-            print(f" \n ICs took {time.time()-start:.5f} s\n")
-
+        self.printParams(to_file=to_file)
+        self.log.info(f"ICs took {time.time()-start:.5f} s")
+        self.log.info("Starting simulation...\n")
 
     # -----------------------------------------------------------------------
     # Mass/energy update
@@ -390,6 +378,9 @@ class Shells:
         Force prefactor:
             alpha = g^2 * T^2_nu / m^2_phi
         """
+        self.log.debug("-" * 50)
+        self.log.debug(f"step {self.curr:5d}")
+        self.log.debug("-" * 50)
         dt = self.dt
         soft = self.soft
         F_fs_prev = self.F_fs
@@ -415,6 +406,7 @@ class Shells:
         hi = self.data['R'] > self.Rmax
         self.data['R'][hi]  = 2.0*self.Rmax - self.data['R'][hi]
         self.data['q'][hi] *= -1.0
+        self.curr += 1
 
         # -- Sort and updates --
         self._sort()
@@ -480,6 +472,7 @@ class Shells:
         # mphi check
         gc2 = 12 * self.m_phi / self.m_nu
 
+        self.log.debug(f"Bounds on g:{gc1:.3e}, g:{gc2:.3e}")
         # Get the max as a minimum requirement
         gc = max(gc1, gc2)
         if gc >= self.g:
@@ -518,6 +511,7 @@ class Shells:
     @timed("I/O")
     def _save(self, path, step_index):
         """Save shell state to a text or hdf5 file."""
+        self.meas += 1
         if self.hdf5_io:
             self._save_hdf5(path, step_index)
         else:
@@ -537,6 +531,10 @@ class Shells:
                 header=header,
                 fmt="%d %.3e %.3e %.3e %.3e %.3e %.3e %.3e %.3e"
             )
+
+        self.log.info("=======================================================")
+        self.log.info(f"Meas #{self.meas:3d} a:{self.a:.5f} z:{1/self.a-1:.1f}")
+        self.log.info("=======================================================\n")
 
 
     # -----------------------------------------------------------------------
@@ -598,6 +596,47 @@ class Shells:
             self.data['phi'] = raw[:,6]
             self.data['F_fs'] = raw[:,7]
             self.data['F_lr'] = raw[:,8]
+
+
+
+    # -----------------------------------------------------------------------
+    # Summary print
+    # -----------------------------------------------------------------------
+    def printParams(self, to_file):
+        min_m = np.min(self.m/self.m0)
+        max_m = np.max(self.m/self.m0)
+
+        message = []
+        message.append("")
+        message.append("=" * 60)
+        message.append("  Simulation parameters")
+        message.append("=" * 60)
+        message.append(f" \n   Nshells = {self.N}\n")
+        message.append(f"   g       = {self.g:.3e}")
+        message.append(f"   m_phi   = {self.m_phi:.3e} eV")
+        message.append(f"   m_nu    = {self.m_nu:.3e} eV")
+        message.append(f"   T_nu    = {self.T_nu:.3e} eV")
+        message.append(f"   Range   = {self.frange:.3e} Mpc\n")
+        message.append(f"   alpha   = {self.alpha:.3e}  ")
+        message.append(f"   beta    = {self.beta:.3e}  ")
+        message.append(f"   eta     = {self.eta:.3e}  ")
+        message.append(f"   m/m0    = [{min_m:.5f},{max_m:5f}]\n")
+        message.append(f"   m_nu/T_nu = {self.m0_hat:.3e} ")
+        message.append(f"   m_phi/H0  = {self.m_phi_hat:.3e}\n")
+        message.append(f"   a_NR  = {self.a_NR:.3e}   ")
+        message.append(f"   a_ini = {self.a_ini:.3e}  (z={1/self.a_ini-1:.1f})")
+        message.append(f"   a_end = {self.a_end:.3e}  (z={1/self.a_end-1:.1f})")
+        message.append(f"   dt    = {self.dt:.3e}     \n")
+        message.append(f"   lambda_FS  = {self.l_fs:.3e}  (free-streaming)")
+        message.append(f"   lambda_phi = {self.l_phi:.3e}  (Yukawa range)")
+        message.append(f"   Rmin       = {self.Rmin:.3e}")
+        message.append(f"   Rmax       = {self.Rmax:.3e}\n")
+        message.append("=" * 60)
+        message = "\n".join(message)
+
+        if to_file:
+            self.log.info(message)
+        print(message)
 
 
     # -----------------------------------------------------------------------

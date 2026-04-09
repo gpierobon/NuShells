@@ -10,7 +10,7 @@ from force import solveYukawaForce, solveGravityForce
 
 # Main params
 Nshells = 1000
-g       = 1e-26
+g       = 1e-24
 m_nu    = 0.1
 m_phi   = 1e-29
 
@@ -30,10 +30,12 @@ seed    = 9
 nmeas   = 100
 odir    = 'output'
 hdf5_io = True
+verb    = 0
+to_file = True
 
 # Iteration
 method  = 'anderson'
-tol     = 1e-2
+tol     = 1e-5
 soft    = 1e-2
 
 
@@ -47,7 +49,8 @@ if __name__ == "__main__":
     shells = Shells()
     shells.init(Nshells, g=g, m_phi=m_phi, m_nu=m_nu, kappa=kappa, kappa2=kappa2,
                 dt_frac=dt_frac, iter_m=method, iter_tol=tol, soft=soft,
-                w_min=w_min, hdf5_io=hdf5_io, seed=seed, verb=True)
+                w_min=w_min, hdf5_io=hdf5_io, seed=seed, odir=odir,verb=verb,
+                to_file=to_file)
 
     saves = set(np.linspace(0, nt - 1, nmeas, dtype=int))
 

@@ -187,8 +187,7 @@ def solvePhi(
     shells.data["phi"] = phi
     shells._update_mass()
 
-    if verbose:
-        status = "converged" if converged else "NOT converged"
-        print(f"[solve_phi] {method:10s}  {status}  iters={n_iter:4d}  err={err:.2e}  α={alpha:.1e}")
+    status = "converged" if converged else "NOT converged"
+    shells.log.debug(f"[solve_phi] {method:10s} iters={n_iter:3d}  err={err:.2e}")
 
     return phi

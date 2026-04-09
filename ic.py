@@ -21,13 +21,14 @@ def sample_q(shells, N):
     """Return N samples of hat_q from the Fermi-Dirac distribution."""
     if shells.inv_cdf is None:
         _build_fd_icdf(shells)
+    shells.log.debug(f"[IC] Sampled {N} momenta from Fermi-Dirac")
     return shells.inv_cdf(np.random.rand(N))
 
 
 # -----------------------------------------------------------------------
 # Weight computation
 # -----------------------------------------------------------------------
-def compute_weights(r, dr, mu, q, Psi):
+def compute_weights(r, dr, mu, q, Psi, log):
     """
     Phase-space weight for one shell.
 
@@ -60,10 +61,12 @@ def compute_weights(r, dr, mu, q, Psi):
         * 2.0 * Nq        # FD normalisation
         * pert            # linearised perturbation (delta f) 
     )
+    log.debug(f"[IC] Computed weights")
     return weight
 
 
-def get_profile(r, Psi0, R0, ptype='gaussian', rmax=None):
+def get_profile(r, Psi0, R0, log, ptype='gaussian', rmax=None):
+    """ """
     rho = r/R0
     if ptype == 'gaussian':
         prof = Psi0 * np.exp(-0.5*rho**2)
@@ -85,4 +88,5 @@ def get_profile(r, Psi0, R0, ptype='gaussian', rmax=None):
         prof[(r > R0) & (r < rmax)] = - Psi0 / (rhomax**3-1)
     else:
         raise ValueError(f"Profile {ptype} not recognised")
+    log.debug(f"[IC] Using {ptype} profile for initial perturbation")
     return prof
