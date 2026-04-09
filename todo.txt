@@ -1,14 +1,5 @@
-Physics:
 
-- Stepping log
-- Output file based on redshift
 - Revisit ICs (perturbation)
 - Different sampling at IC?
 - Contribution from infinity
-
-Optimisations:
-
-- Speedup update mass
-- Speedup computePhi
-- Convergence naive vs anderson
 

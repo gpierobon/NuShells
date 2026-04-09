@@ -50,6 +50,7 @@ class Shells:
         self.iter_tol   = None
         self.log        = None
         self.verb       = None
+        self.grav       = None
 
         # Physical inputs [eV]
         self.g      = None
@@ -96,6 +97,7 @@ class Shells:
              kappa    = 0.75,           # a_ini = kappa * a_NR
              kappa2   = 0.75,           # a_end = kappa2 * 1 / R_min
              dt_frac  = 0.3,            # Courant factor
+             grav     = True,           # Keep gravity in the time loop
              ic_type  = 'gaussian',     # IC profile
              Psi0     = 1e-5,           # amplitude of initial perturbation
              R0       = None,           # perturbation scale [1/m_phi]
@@ -131,7 +133,9 @@ class Shells:
 
         start = time.time()
         self.verb = verb
+        self.grav = grav
         self.log = createLog(self.verb, toFile=to_file)
+        self.to_file = to_file
         self.hdf5_io  = hdf5_io
         self.iter_m   = iter_m
         self.iter_tol = iter_tol
@@ -188,6 +192,7 @@ class Shells:
         self.R0 = R0
 
         self.dt_frac = dt_frac
+        self.dt = 0.001
         self.soft = soft
 
         # -------------------------------------------------------------------
@@ -228,7 +233,7 @@ class Shells:
         self.data['w']    = weights
         self.data['phi']  = np.full(Nshells, phi_guess)
         self.data['prof'] = Psi
-        self.log.debug("Arrays created!")
+        self.log.debug("[IC] Arrays created!")
 
 
         # -------------------------------------------------------------------
@@ -260,8 +265,7 @@ class Shells:
         self.data["F_fs"] = F_fs
         self.data["F_lr"] = F_lr
         self.data["F_g"]  = F_g
-
-        self.dt = self._update_dt()
+        self._update_dt()
 
         # -------------------------------------------------------------------
         # Summary print
@@ -325,6 +329,7 @@ class Shells:
                            da/d(hat_eta) = sqrt(a) / m_phi_hat
         """
         self.a += self.dt * np.sqrt(self.a) / self.m_phi_hat
+        self.log.debug(f"[da] Time update -> {self.a:.5f}")
 
 
     # -----------------------------------------------------------------------
@@ -332,7 +337,7 @@ class Shells:
     # -----------------------------------------------------------------------
     def _update_dt(self):
         """ Update timestep according to acceleration"""
-        F_tot = np.abs(self.F_fs - self.F_lr)
+        F_tot = np.abs(self.F_fs - self.F_lr - self.F_g)
 
         mask = F_tot > 0
         dt_acc = np.full(self.N, np.inf)
@@ -346,7 +351,9 @@ class Shells:
         #dt_acc2 = np.full(self.N, np.inf)
         #dt_acc2[mask2] = np.sqrt(2 * self.soft / self.F_lr[mask2])
 
-        return self.dt_frac * np.min(dt_acc)
+        dt_new = self.dt_frac * np.min(dt_acc)
+        self.log.debug(f"[dt] Timestep update {self.dt:.5f} -> {dt_new:.5f}")
+        self.dt = dt_new
 
 
     # -----------------------------------------------------------------------
@@ -381,11 +388,12 @@ class Shells:
         self.log.debug("-" * 50)
         self.log.debug(f"step {self.curr:5d}")
         self.log.debug("-" * 50)
+
         dt = self.dt
         soft = self.soft
         F_fs_prev = self.F_fs
         F_lr_prev = self.F_lr
-        F_g_prev = self.F_lr
+        F_g_prev = self.F_g
 
         # -- Half kick --
         self.data['q'] += 0.5 * dt * (F_fs_prev - F_lr_prev - F_g_prev)
@@ -406,14 +414,15 @@ class Shells:
         hi = self.data['R'] > self.Rmax
         self.data['R'][hi]  = 2.0*self.Rmax - self.data['R'][hi]
         self.data['q'][hi] *= -1.0
-        self.curr += 1
 
         # -- Sort and updates --
         self._sort()
         self._update_a()
         self._update_mass()
-        self._update_cumMass()
-        self._update_rhobar()
+        if self.grav:
+            self._update_cumMass()
+            self._update_rhobar()
+        self.curr += 1
 
         # -- Phi and Force updates
         phi0_interp = interpPhi(R_old, phi_old, self.data['R'])
@@ -422,17 +431,22 @@ class Shells:
                      tol=self.iter_tol, verbose=verb)
 
         self._update_mass()
-        self._update_cumMass()
-        self._update_rhobar()
+        if self.grav:
+            self._update_cumMass()
+            self._update_rhobar()
         min_m = np.min(self.m/self.m0)
         max_m = np.max(self.m/self.m0)
 
         F_fs, F_lr = solveYukawaForce(self)
-        F_g = solveGravityForce(self)
+        if self.grav:
+            F_g = solveGravityForce(self)
+            self.data["F_g"] = F_g
+        else:
+            F_g = np.zeros(self.N)
+
         self.data["F_fs"] = F_fs
         self.data["F_lr"] = F_lr
-        self.data["F_lr"] = F_g
-        self.dt = self._update_dt()
+        self._update_dt()
 
         # -- Second half kick  --
         self.data['q'] += 0.5 * dt * (F_fs - F_lr - F_g)
@@ -472,7 +486,7 @@ class Shells:
         # mphi check
         gc2 = 12 * self.m_phi / self.m_nu
 
-        self.log.debug(f"Bounds on g:{gc1:.3e}, g:{gc2:.3e}")
+        self.log.debug(f"Bounds on g>{gc1:.3e}, g>{gc2:.3e}, g is {self.g:.3e}")
         # Get the max as a minimum requirement
         gc = max(gc1, gc2)
         if gc >= self.g:
@@ -484,7 +498,7 @@ class Shells:
     # -----------------------------------------------------------------------
     def _save_hdf5(self, path, step_index):
         """Save shell state to a hdf5 file."""
-        with h5.File(f"{path}/shells_{step_index:05d}.hdf5", 'w') as f:
+        with h5.File(f"{path}/states/shells_{step_index:05d}.hdf5", 'w') as f:
 
             head = f.create_group("Header")
             head.attrs['N'] = self.N
@@ -521,7 +535,7 @@ class Shells:
                 f"Rmin={self.Rmin:.2e}, Rmax={self.Rmax:.2e}"
             )
             np.savetxt(
-                f"{path}/shells_{step_index:05d}.txt",
+                f"{path}/states/shells_{step_index:05d}.txt",
                 np.column_stack([
                     self.data['ID'], self.data['R'],
                     self.data['q'],  self.data['ell'],
@@ -532,9 +546,14 @@ class Shells:
                 fmt="%d %.3e %.3e %.3e %.3e %.3e %.3e %.3e %.3e"
             )
 
-        self.log.info("=======================================================")
-        self.log.info(f"Meas #{self.meas:3d} a:{self.a:.5f} z:{1/self.a-1:.1f}")
-        self.log.info("=======================================================\n")
+        if self.to_file:
+            self.log.info("=======================================================")
+            self.log.info(f"Meas #{self.meas:3d} a:{self.a:.5f} z:{1/self.a-1:.1f}")
+            self.log.info("=======================================================\n")
+        else:
+            print("\n=======================================================")
+            print(f"Meas #{self.meas:3d} a:{self.a:.5f} z:{1/self.a-1:.1f}")
+            print("=======================================================\n")
 
 
     # -----------------------------------------------------------------------
@@ -542,7 +561,7 @@ class Shells:
     # -----------------------------------------------------------------------
     def _load_hdf5(self, path, step_index):
         """Load shell state from hdf5 file."""
-        with h5.File(f"{path}/shells_{step_index:05d}.hdf5", 'r') as f:
+        with h5.File(f"{path}/states/shells_{step_index:05d}.hdf5", 'r') as f:
             self.a =  float(f['Header'].attrs['a'])
             self.g =  float(f['Header'].attrs['g'])
             self.m0 = float(f['Header'].attrs['m0'])
@@ -571,7 +590,7 @@ class Shells:
         if self.hdf5_io:
             self._load_hdf5(path, step_index)
         else:
-            fname = f"{path}/shells_{step_index:05d}.txt"
+            fname = f"{path}/states/shells_{step_index:05d}.txt"
 
             # Read header to extract scale factor
             with open(fname, "r") as f:
@@ -634,7 +653,7 @@ class Shells:
         message.append("=" * 60)
         message = "\n".join(message)
 
-        if to_file:
+        if self.to_file:
             self.log.info(message)
         print(message)
 

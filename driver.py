@@ -8,36 +8,45 @@ from shells import Shells
 from phi import solvePhi, interpPhi
 from force import solveYukawaForce, solveGravityForce
 
-# Main params
-Nshells = 1000
-g       = 1e-24
-m_nu    = 0.1
-m_phi   = 1e-29
 
-# Times
-nt      = 10000
-dt_frac = 0.5
-kappa   = 0.75
-kappa2  = 1.0
+# === Main params ============================================================
+Nshells = 1000         # Number of simulation shells
+g = 1e-26              # Yukawa coupling constant
+m_nu = 0.1             # Neutrino  mass (eV)
+m_phi = 1e-29          # Scalar field mass (eV)
 
-# Initial conditions
-Psi0    = 1e-5
-ic_type = 'tophat'
-w_min   = 1e-12
-seed    = 9
+# === Time params ============================================================
+dt_frac = 0.3          # Time step fractions (Courant-like)
+ti_frac = 0.75         # Initial time controller (a_i=ti_frac*a_NR)
+tf_frac = 1.0          # Final time controller (a_f=tf_frac*1/mphi)
 
-# Outputs
-nmeas   = 100
-odir    = 'output'
-hdf5_io = True
-verb    = 0
-to_file = True
+# === IC params ==============================================================
+Psi0 = 1e-5            # Initial perturbation amplitude
+ic_type = 'tophat'     # Perturbation profile: 'tophat', 'tophat_c', 
+                       #                       'gaussian', 'gaussian_c',
+                       #                       'exp_c, 'poly_c'
+                       #                       '_c' profiles are compensated
+w_min = 1e-12          # Minimum weight
+seed = 9               # IC random seed 
 
-# Iteration
-method  = 'anderson'
-tol     = 1e-5
-soft    = 1e-2
+# === Output params ==========================================================
+nmeas = 50             # Number of measurements
+logmeas = True         # Logarithmic spacing (in a) for measurements
+odir = 'output'        # Output directory (data and logs)
+hdf5_io = True         # Saved in HDF5 format (True) or .txt (False)
+to_file = True         # Print to file (True) or to screen (False)
+verb = 1               # Verbosity level (0:INFO, 1:DEBUG)
 
+# === Force params ===========================================================
+method = 'anderson'    # Iteration method:
+                       #   'naive'    : brute force, ok for small g 
+                       #   'anderson' : uses scipy.optimise.anderson
+                       #                to accelerate the iteration
+tol = 1e-5             # Tolerance level for the iterations
+grav = False           # Keep gravitational forces in the time loop (True)
+soft = 1e-2            # Softening parameter to define minimum radius 
+
+# ============================================================================
 
 if __name__ == "__main__":
 
@@ -45,16 +54,21 @@ if __name__ == "__main__":
     if os.path.exists(odir):
         shutil.rmtree(odir)
     os.makedirs(odir)
+    os.makedirs(odir+"/states")
 
     shells = Shells()
-    shells.init(Nshells, g=g, m_phi=m_phi, m_nu=m_nu, kappa=kappa, kappa2=kappa2,
-                dt_frac=dt_frac, iter_m=method, iter_tol=tol, soft=soft,
-                w_min=w_min, hdf5_io=hdf5_io, seed=seed, odir=odir,verb=verb,
+    shells.init(Nshells, g=g, m_phi=m_phi, m_nu=m_nu, grav=grav,
+                kappa=ti_frac, kappa2=tf_frac, dt_frac=dt_frac,
+                iter_m=method, iter_tol=tol, soft=soft, w_min=w_min,
+                hdf5_io=hdf5_io, seed=seed, odir=odir,verb=verb,
                 to_file=to_file)
 
-    saves = set(np.linspace(0, nt - 1, nmeas, dtype=int))
+    if logmeas:
+        saves_a = np.geomspace(shells.a_ini, shells.a_end, nmeas)
+    else:
+        saves_a = np.linspace(shells.a_ini, shells.a_end, nmeas)
 
-    j = 0; t = 0
+    j = 0
     pbar = tqdm.tqdm(total=1)
 
     while True:
@@ -64,11 +78,11 @@ if __name__ == "__main__":
         pbar.set_description(f"z={z:.1f}")
         pbar.update(1)
 
-        if t in saves:
+        while j < len(saves_a) and shells.a >= saves_a[j]:
+
             shells._save(odir, j)
             j += 1
 
-        t += 1
         if shells.a >= shells.a_end:
             pbar.close()
             z_end = 1/shells.a_end-1

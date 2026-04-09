@@ -42,22 +42,22 @@ A spherical shell N-body code for simulating collisionless neutrino dynamics wit
 
 - ✅ **Text output** — shell state saved with `numpy.savetxt`
 - ✅ **HDF5 output** — shell state saved with header metadata using `h5py`
+- ✅ **Measurements** — shell state saved with linear or log-spacing in a(t)
 
 ### Utilities
 
-- ✅ **Radial density** — bins shells by weight into radial number density `n(r)`
-- ✅ **Profiler** — wall-clock profiling decorator (`@timed`)
 - ✅ **Driver** — driver script to set params and run the simulation
+- ✅ **Profiler** — wall-clock profiling decorator (`@timed`)
+- ✅ **Logger** — info and debug verbosity levels
+- ✅ **Radial density** — bins shells by weight into radial number density `n(r)`
 - ✅ **Visualisation** — scripts to visualise circles or neutrino delta
 
 
 ## To do list
 
-- **Stepping log**: Record `a`, `dt`, min/max `m/m0`, iterations per step
-- **Output file**: Based on redshift, instead of measurements every X steps
+- **Convergence tests in the iteration**: Naive vs anderson check
 - **Boundary term**: Add contribution from infinity for phi and Yukawa force
 - **Alternative IC sampling**: Explore PSD-proportional radial sampling
-- **Convergence tests in the iteration**: Naive vs anderson check
 
 
 [github repo]: https://github.com/gpierobon/NuShells.git
