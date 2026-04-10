@@ -53,6 +53,7 @@ def compute_weights(r, dr, mu, q, Psi, log):
     f0     = 1.0 / (np.exp(q) + 1.0)
     dfdlnq = -(q * np.exp(q)) / (np.exp(q) + 1.0)**2   # = q * df/dq
     pert   = 1.0 + (dfdlnq / f0) * Psi * mu
+    #pert   = 1.0 + (dfdlnq / f0) * 2*np.pi / a * .... # Add a in inputs
 
     weight = (
         8.0 * np.pi**2    # solid angle factor

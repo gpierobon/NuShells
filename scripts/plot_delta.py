@@ -18,10 +18,10 @@ speed    = float(sys.argv[2])
 sig      = float(sys.argv[3])
 
 use_hdf5 = True
-pattern = os.path.join(data_dir, "shells_*.hdf5")
+pattern = os.path.join(data_dir, "states/shells_*.hdf5")
 files   = sorted(glob.glob(pattern))
 if len(files) < 1:
-    pattern = os.path.join(data_dir, "shells_*.txt")
+    pattern = os.path.join(data_dir, "states/shells_*.txt")
     files   = sorted(glob.glob(pattern))
     use_hdf5 = False
 

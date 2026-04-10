@@ -15,19 +15,26 @@ from plot import circles
 
 data_dir = sys.argv[1]
 speed    = float(sys.argv[2])
-pattern = os.path.join(data_dir, "shells_*.txt")
-files = sorted(glob.glob(pattern))
+
+use_hdf5 = True
+pattern = os.path.join(data_dir, "states/shells_*.hdf5")
+files   = sorted(glob.glob(pattern))
+if len(files) < 1:
+    pattern = os.path.join(data_dir, "states/shells_*.txt")
+    files   = sorted(glob.glob(pattern))
+    use_hdf5 = False
 
 if len(files) < 1:
     print(f"No field files found, check the output directory!")
     exit(0)
 
-print(f"Found {len(files)} field files")
+print(f"Found {len(files)} field files, last one is {files[-1]}")
 
 def log_r(r, rmin):
     return np.log10(r / rmin)
 
 shells = Shells()
+shells.hdf5_io = True if use_hdf5 else False
 shells._load(data_dir, 0)
 skip = 10 if shells.N > 1000 else 1
 

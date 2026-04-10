@@ -101,7 +101,7 @@ class Shells:
              ic_type  = 'gaussian',     # IC profile
              Psi0     = 1e-5,           # amplitude of initial perturbation
              R0       = None,           # perturbation scale [1/m_phi]
-             soft     = 1e-5,           # softening length
+             soft     = 1e-3,           # softening length
              iter_m   = 'anderson',     # method in phi iteration
              iter_tol = 1e-3,           # tolerance in phi iteration
              w_min    = None,           # weight floor
@@ -462,7 +462,7 @@ class Shells:
         def v(a):
             p = Q_MEAN * T_NU_EV / a
             E = np.sqrt(p**2 + self.m_nu**2)
-            return p / E
+            return p / E / a
 
         I, err = scipy.integrate.quad(v, ai, self.a_ini)
         lambda_FS_H0 = I / np.sqrt(Omega_r)
