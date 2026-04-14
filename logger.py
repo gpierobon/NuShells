@@ -6,6 +6,9 @@ def createLog(verb_level, toFile=False, path="output"):
     """ """
     logger = logging.getLogger(__name__)
 
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
     if verb_level == 0:
         logger.setLevel(logging.INFO)
     elif verb_level == 1:

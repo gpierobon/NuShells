@@ -38,7 +38,7 @@ class Shells:
             ('eps', np.float64),   # hat_eps = eps / T_nu
             ('F_fs', np.float64),  # Free-streaming term
             ('F_lr', np.float64),  # Long-range force term
-            ('F_g',  np.float64),  # Gravirty force term
+            ('F_g',  np.float64),  # Gravity force term
             ('prof', np.float64),  # Initial perturbation profile
         ])
 
@@ -112,23 +112,53 @@ class Shells:
              to_file  = True            # Log to file instead of print
             ):
         """
-        Initialise N shells in dimensionless units.
-
-        All masses / temperatures given in eV.
-        After this call, no eV quantities appear in the dynamics.
-
+        Initialize N shells in dimensionless units.
         Parameters
         ----------
-        Nshells  : int    number of shells            (default: 1000)
-        g        : float  coupling constant           (default: 1e-26)
-        m_phi    : float  mediator mass [eV]          (default: 1e-29 eV)
-        m_nu     : float  neutrino mass [eV]          (default: 0.1 eV)
-        kappa    : float  a_ini = kappa * a_NR        (default 0.1)
-        dt_frac  : float  dt = dt_frac * sqrt(soft/F) (default 0.3)
-        Psi0     : float  amplitude of perturbation   (default: 1e-5)
-        R0       : float  scale of perturbation
-        w_min    : float  minimum weight floor
-        verb     : bool   print diagnostics
+        Nshells : int, optional
+            Number of shells. Default is 1000.
+        g : float, optional
+            Coupling constant. Default is 1e-26.
+        m_phi : float, optional
+            Mediator mass in eV. Default is 1e-29.
+        m_nu : float, optional
+            Neutrino mass in eV. Default is 0.1.
+        T_nu : float, optional
+            Neutrino temperature in eV. Default is T_NU_EV.
+        H0 : float, optional
+            Hubble parameter today in eV. Default is H0_EV.
+        kappa : float, optional
+            Sets the initial scale factor: a_ini = kappa * a_NR.
+        kappa2 : float, optional
+            Sets the final scale factor: a_end = kappa2 / R_min.
+        dt_frac : float, optional
+            Courant factor controlling timestep size.
+        grav : bool, optional
+            If True, include gravitational forces in the evolution.
+        ic_type : str, optional
+            Type of initial condition profile (e.g. 'gaussian').
+        Psi0 : float, optional
+            Amplitude of the initial perturbation.
+        R0 : float or None, optional
+            Characteristic scale of the perturbation in units of 1/m_phi.
+        soft : float, optional
+            Softening length used in force calculations.
+        iter_m : str, optional
+            Method used for phi iteration (e.g. 'anderson').
+        iter_tol : float, optional
+            Convergence tolerance for phi iteration.
+        w_min : float or None, optional
+            Minimum weight floor for shells.
+        hdf5_io : bool, optional
+            If True, enable HDF5 output.
+        seed : int, optional
+            Random seed for initial condition generation.
+        odir : str, optional
+            Output directory.
+        verb : int, optional
+            Verbosity level (higher means more output).
+        to_file : bool, optional
+            If True, log output to file instead of printing.
         """
 
         start = time.time()
@@ -272,7 +302,6 @@ class Shells:
         # -------------------------------------------------------------------
         self.printParams(to_file=to_file)
         self.log.info(f"ICs took {time.time()-start:.5f} s")
-        self.log.info("Starting simulation...\n")
 
     # -----------------------------------------------------------------------
     # Mass/energy update
@@ -515,11 +544,14 @@ class Shells:
             data.create_dataset("ID",   data=self.ID,    dtype=np.int32)
             data.create_dataset("R",    data=self.R,     dtype=np.float32)
             data.create_dataset("q",    data=self.q,     dtype=np.float32)
+            data.create_dataset("ell",  data=self.ell,   dtype=np.float32)
             data.create_dataset("m",    data=self.m,     dtype=np.float32)
+            data.create_dataset("eps",  data=self.eps,   dtype=np.float32)
             data.create_dataset("w",    data=self.w,     dtype=np.float32)
             data.create_dataset("phi",  data=self.phi,   dtype=np.float32)
             data.create_dataset("F_fs", data=self.F_fs,  dtype=np.float32)
             data.create_dataset("F_lr", data=self.F_lr,  dtype=np.float32)
+            data.create_dataset("F_g",  data=self.F_g,   dtype=np.float32)
 
 
     @timed("I/O")
