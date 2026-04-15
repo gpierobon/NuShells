@@ -137,6 +137,13 @@ def _solveAnderson(shells, phi0, tol, max_iter, memory, alpha_mix):
     except Exception as e:
         return phi0, call_count[0], False, float("inf")
 
+
+def _solveNoIter(shells, phi0):
+    """ """
+    phi = _stepPhi(shells, phi0)
+    return phi
+
+
 @timed("solvePhi")
 def solvePhi(
     shells,
@@ -155,7 +162,7 @@ def solvePhi(
     Parameters
     ----------
     shells      : Shell state
-    method      : "naive" or "anderson"
+    method      : "naive" or "anderson" or "noiter"
     tol         : relative convergence tolerance
     max_iter    : maximum iterations / function evaluations
     damp        : (naive)    mixing parameter in (0, 1]
@@ -176,6 +183,11 @@ def solvePhi(
         phi, n_iter, converged, err = _solveNaive(shells, phi0, tol, max_iter, damp)
     elif method == "anderson":
         phi, n_iter, converged, err = _solveAnderson(shells, phi0, tol, max_iter, memory, alpha_mix)
+    elif method == "noiter":
+        phi = _solveNoIter(shells, phi0)
+        converged = True
+        n_iter = 1
+        err = np.nan
     else:
         raise ValueError(f"Unknown method '{method}'. Choose: naive | anderson")
 

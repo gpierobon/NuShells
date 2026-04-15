@@ -21,6 +21,7 @@ ti_frac = 0.75         # Initial time controller (a_i=ti_frac*a_NR)
 tf_frac = 1.0          # Final time controller (a_f=tf_frac*1/mphi)
 
 # === IC params ==============================================================
+ic_only = False        # Only create and save initial conditions
 Psi0 = 1e-5            # Initial perturbation amplitude
 ic_type = 'tophat'     # Perturbation profile: 'tophat', 'tophat_c', 
                        #                       'gaussian', 'gaussian_c',
@@ -42,6 +43,7 @@ method = 'anderson'    # Iteration method:
                        #   'naive'    : brute force, ok for small g 
                        #   'anderson' : uses scipy.optimise.anderson
                        #                to accelerate the iteration
+                       #   'noiter'   : one evaluation only
 tol = 1e-5             # Tolerance level for the iterations
 grav = False           # Keep gravitational forces in the time loop (True)
 soft = 1e-2            # Softening parameter to define minimum radius 
@@ -62,6 +64,11 @@ if __name__ == "__main__":
                 iter_m=method, iter_tol=tol, soft=soft, w_min=w_min,
                 hdf5_io=hdf5_io, seed=seed, odir=odir,verb=verb,
                 to_file=to_file)
+
+    if ic_only:
+        shells._save(odir, 0)
+        print(f"ICs saved in {odir}")
+        exit(0)
 
     if logmeas:
         saves_a = np.geomspace(shells.a_ini, shells.a_end, nmeas)

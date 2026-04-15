@@ -4,6 +4,7 @@ __pycache__/
 plots/
 other/
 circles/
+ic_tests/
 jl/
 
 docs/_site/

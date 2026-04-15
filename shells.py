@@ -533,7 +533,7 @@ class Shells:
             head.attrs['N'] = self.N
             head.attrs['a'] = self.a
             head.attrs['g'] = self.g
-            head.attrs['m_phi'] = self.m_phi
+            head.attrs['m_phi'] = self.m_phi_hat
             head.attrs['alpha'] = self.alpha
             head.attrs['Rmin'] = self.Rmin
             head.attrs['Rmax'] = self.Rmax
