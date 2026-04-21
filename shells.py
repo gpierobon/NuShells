@@ -31,15 +31,15 @@ class Shells:
             ('ID',  np.int32),     # Shell ID
             ('R',   np.float64),   # hat_r   = r / r_phi 
             ('q',   np.float64),   # hat_qr  = q_r / T_nu
-            ('ell', np.float64),   # hat_ell = r * q_perp * H0 / T_nu
+            ('ell', np.float64),   # hat_ell = r * q_perp / T_nu
             ('w',   np.float64),   # weight (dimensionless)
             ('phi', np.float64),   # hat_phi = phi / T_nu
+            ('psi', np.float64),   # hat_psi (grav. potential)
             ('m',   np.float64),   # hat_m   = m_tilde / T_nu
             ('eps', np.float64),   # hat_eps = eps / T_nu
             ('F_fs', np.float64),  # Free-streaming term
             ('F_lr', np.float64),  # Long-range force term
             ('F_g',  np.float64),  # Gravity force term
-            ('prof', np.float64),  # Initial perturbation profile
         ])
 
         self.data       = None
@@ -97,11 +97,14 @@ class Shells:
              kappa    = 0.75,           # a_ini = kappa * a_NR
              kappa2   = 0.75,           # a_end = kappa2 * 1 / R_min
              dt_frac  = 0.3,            # Courant factor
-             grav     = True,           # Keep gravity in the time loop
-             ic_type  = 'gaussian',     # IC profile
-             Psi0     = 1e-5,           # amplitude of initial perturbation
+
+             ## Revisit
+             grav     = True,           # Keep gravity in the time loop ## will keep
+             ic_type  = 'gaussian',     # IC profile ## Will remove
+             Psi0     = 1e-5,           # amplitude of initial perturbation ## move to delta0
              R0       = None,           # perturbation scale [1/m_phi]
-             soft     = 1e-3,           # softening length
+
+             soft     = 1e-3,           # softening length: "minimum Radius"
              iter_m   = 'anderson',     # method in phi iteration
              iter_tol = 1e-3,           # tolerance in phi iteration
              w_min    = None,           # weight floor
@@ -242,9 +245,13 @@ class Shells:
         q_arr  = ic.sample_q(self, Nshells)
         mu_arr = np.random.uniform(-1.0, 1.0, Nshells)  # cos(theta)
 
-        # Compute 
-        Psi = ic.get_profile(r_grid, Psi0, R0, self.log, ptype=ic_type)
-        weights = ic.compute_weights(r_grid, dr, mu_arr, q_arr, Psi, self.log)
+        # -------------------------------------------------------------------
+        # Compute perturbation profiles
+        # -------------------------------------------------------------------
+        self.delta0 = 1.73342 / (z_ini**(0.7358) * self.frange**(0.0992))
+
+        psi = ic.compute_Psi(r_grid, self)
+        weights = ic.compute_weights(r_grid, dr, mu_arr, q_arr, psi, self.log)
 
         # Radial and angular momentum
         hat_qr = q_arr * mu_arr
@@ -252,7 +259,7 @@ class Shells:
         hat_ell = r_grid * hat_qT
 
         # Initial guess for Yukawa potential
-        phi_guess = -0.01
+        phi_guess = -self.m0_hat ## Check this 
 
         # Initialiase data structure
         self.data = np.zeros(Nshells, dtype=self._dtype)
@@ -262,7 +269,7 @@ class Shells:
         self.data['ell']  = hat_ell
         self.data['w']    = weights
         self.data['phi']  = np.full(Nshells, phi_guess)
-        self.data['prof'] = Psi
+        self.data['psi']  = psi
         self.log.debug("[IC] Arrays created!")
 
 
@@ -270,8 +277,10 @@ class Shells:
         # Normalise weights 
         # -------------------------------------------------------------------
         self.data['w'] /= np.max(self.data['w'])
+
+        ## Remove this!!
         if w_min is None:
-            w_min = 1e-3
+            w_min = 1e-12
         self.data['w'] = np.maximum(self.data['w'], w_min)
 
         # -------------------------------------------------------------------
@@ -283,8 +292,8 @@ class Shells:
         _ = solvePhi(self, method="anderson", tol=iter_tol, verbose=verb)
 
         self._update_mass()
-        self._update_cumMass()
-        self._update_rhobar()
+        self._update_cumMass() ##Only for self-gravity
+        self._update_rhobar() ## this one too
 
         min_m = np.min(self.m/self.m0)
         max_m = np.max(self.m/self.m0)
@@ -358,6 +367,12 @@ class Shells:
                            da/d(hat_eta) = sqrt(a) / m_phi_hat
         """
         self.a += self.dt * np.sqrt(self.a) / self.m_phi_hat
+        z = 1/self.a-1
+
+        ## Update external gravitational potential time dependence
+        self.delta0 = 1.73342 / (z**(0.7358) * self.frange**(0.0992))
+        self.data['psi'] = self.psi_pref * self.delta0 / self.a
+
         self.log.debug(f"[da] Time update -> {self.a:.5f}")
 
 
@@ -426,13 +441,14 @@ class Shells:
 
         # -- Half kick --
         self.data['q'] += 0.5 * dt * (F_fs_prev - F_lr_prev - F_g_prev)
-        self._update_mass()
+        self._update_mass() # For eps update
 
         # -- Store pre-drift state for phi interpolation --
         R_old   = self.data['R'].copy()
         phi_old = self.data['phi'].copy()
 
         # -- Full drift --
+        ## Add dt check based on q/eps
         self.data['R'] += dt * self.data['q'] / self.data['eps']
 
         # -- Reflecting boundary conditions --
@@ -447,7 +463,7 @@ class Shells:
         # -- Sort and updates --
         self._sort()
         self._update_a()
-        self._update_mass()
+        self._update_mass() # For update eps
         if self.grav:
             self._update_cumMass()
             self._update_rhobar()
@@ -467,6 +483,7 @@ class Shells:
         max_m = np.max(self.m/self.m0)
 
         F_fs, F_lr = solveYukawaForce(self)
+        ## Gravity force from external potential
         if self.grav:
             F_g = solveGravityForce(self)
             self.data["F_g"] = F_g
@@ -609,8 +626,10 @@ class Shells:
             self.data['ID']   = f['Data/ID']
             self.data['R']    = f['Data/R']
             self.data['q']    = f['Data/q']
+            self.data['ell']  = f['Data/ell']
             self.data['m']    = f['Data/m']
             self.data['w']    = f['Data/w']
+            self.data['eps']  = f['Data/eps']
             self.data['phi']  = f['Data/phi']
             self.data['F_fs'] = f['Data/F_fs']
             self.data['F_lr'] = f['Data/F_lr']
@@ -669,8 +688,9 @@ class Shells:
         message.append(f"   T_nu    = {self.T_nu:.3e} eV")
         message.append(f"   Range   = {self.frange:.3e} Mpc\n")
         message.append(f"   alpha   = {self.alpha:.3e}  ")
-        message.append(f"   beta    = {self.beta:.3e}  ")
-        message.append(f"   eta     = {self.eta:.3e}  ")
+        message.append(f"   delta0  = {self.delta0:.3f}  ")
+        #message.append(f"   beta    = {self.beta:.3e}  ")
+        #message.append(f"   eta     = {self.eta:.3e}  ")
         message.append(f"   m/m0    = [{min_m:.5f},{max_m:5f}]\n")
         message.append(f"   m_nu/T_nu = {self.m0_hat:.3e} ")
         message.append(f"   m_phi/H0  = {self.m_phi_hat:.3e}\n")
@@ -717,6 +737,53 @@ class Shells:
 
 
     # -----------------------------------------------------------------------
+    # Background phi/mass
+    # -----------------------------------------------------------------------
+    def _solve_background(self, max_iter=100, tol=1e-5):
+        """
+        Solve for the self-consistent effective mass hat_m = hat_m0 + <hat_phi>
+        by iterating hat_m = hat_m0 / (1 + alpha/(4pi) * I(a, hat_m)), with
+               I(a, hat_m) = int dq q^2/(exp(q)+1) * 1/sqrt(q^2 + a^2*M^2)
+        This form guarantees hat_m > 0
+        Returns
+        -------
+        hat_m     : float   self-consistent effective mass  hat_m0 + <hat_phi>
+        phi_bg    : float   background <hat_phi> = hat_m - hat_m0
+                            Units are 1/T and g/T, respectively.
+        """
+        alpha  = self.alpha
+        m0     = self.m0_hat
+        a      = self.a
+
+        def I(M):
+            if M <= 0:
+                return np.inf
+            def integrand(q):
+                den = np.sqrt(q**2 + a**2 * M**2)
+                return q**2 / (np.exp(np.clip(q, 0, 500)) + 1) / den
+            result, _ = scipy.integrate.quad(integrand, 0, 30)
+            return result
+
+        # Initial guess: start from bare mass (phi=0)
+        M = m0
+
+        for i in range(max_iter):
+            M_new = m0 / (1.0 + alpha / (4.0 * np.pi) * I(M))
+
+            if M_new <= 0:
+                raise ValueError(f"M went negative at iteration {i}. "
+                                 f"alpha={alpha:.3e} may be too large.")
+
+            if abs(M_new - M) < tol * m0:
+                phi_bkg = M_new - m0       # always negative
+                return M_new, phi_bkg
+
+            M = M_new
+
+        raise ValueError(f"Background phi did not converge after {max_iter} iterations. "
+                         f"Last M={M:.6e}, m0={m0:.6e}")
+
+    # -----------------------------------------------------------------------
     # Properties
     # -----------------------------------------------------------------------
     @property
@@ -736,13 +803,13 @@ class Shells:
     @property
     def phi(self):  return self.data['phi']
     @property
+    def psi(self):  return self.data['psi']
+    @property
     def F_fs(self):  return self.data['F_fs']
     @property
     def F_lr(self):  return self.data['F_lr']
     @property
     def F_g(self):  return self.data['F_g']
-    @property
-    def prof(self):  return self.data['prof']
     @property
     def N(self):    return len(self.data)
 

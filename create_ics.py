@@ -36,8 +36,8 @@ def create_ics(Nshells, g, ic_type, Psi0, odir):
 if __name__ == "__main__":
 
     Psi0 = 1e-5
-    for N in [1_000, 10_000, 100_000]:
-        for g in [1e-26, 1e-25, 1e-24]:
+    for N in [1_000, 10_000, 100_000, 1_000_000]:
+        for g in [1e-24]:
             for it in ['gaussian', 'gaussian_c', 'tophat_c']:
                 odir = f"o_N{int(np.log10(N)):d}g{-int(np.log10(g)):d}_ic{it}"
                 create_ics(N, g, it, Psi0, odir)

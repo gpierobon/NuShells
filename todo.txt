@@ -1,5 +1,12 @@
 
 - Revisit ICs (perturbation)
+    - Self-consistent profile (Eq. 6.21)
+    - Add external potential instead of self-gravity
+
 - Different sampling at IC?
 - Contribution from infinity
+
+- Tests
+    - Sample inwards shells
+    - Switch off long-range and fs and check grav. collapse
 
