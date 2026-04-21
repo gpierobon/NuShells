@@ -39,7 +39,7 @@ class Shells:
             ('eps', np.float64),   # hat_eps = eps / T_nu
             ('F_fs', np.float64),  # Free-streaming term
             ('F_lr', np.float64),  # Long-range force term
-            ('F_g',  np.float64),  # Gravity force term
+            ('F_g',  np.float64),  # Gravity force term (DM only)
         ])
 
         self.data       = None
@@ -63,6 +63,7 @@ class Shells:
 
         # Derived dimensionless quantities
         self.alpha     = None   # g^2 * T^2 / m_phi^2
+        self.alphap    = None   # g^2 * mnu^2 / m_phi^2
         self.beta      = None   # T^4 / (m_phi^2 * m_pl^2)
         self.eta       = None   # beta / alpha
         self.hat_M_phi = None   # M_phi / H0
@@ -92,22 +93,12 @@ class Shells:
              g        = 1e-26,
              m_phi    = 1e-29,          # eV
              m_nu     = 0.1,            # eV
-             T_nu     = T_NU_EV,        # eV (defined in constants.py) 
-             H0       = H0_EV,          # eV (defined in constants.py)
              kappa    = 0.75,           # a_ini = kappa * a_NR
              kappa2   = 0.75,           # a_end = kappa2 * 1 / R_min
              dt_frac  = 0.3,            # Courant factor
-
-             ## Revisit
-             grav     = True,           # Keep gravity in the time loop ## will keep
-             ic_type  = 'gaussian',     # IC profile ## Will remove
-             Psi0     = 1e-5,           # amplitude of initial perturbation ## move to delta0
-             R0       = None,           # perturbation scale [1/m_phi]
-
              soft     = 1e-3,           # softening length: "minimum Radius"
              iter_m   = 'anderson',     # method in phi iteration
              iter_tol = 1e-3,           # tolerance in phi iteration
-             w_min    = None,           # weight floor
              hdf5_io  = False,          # HDF5 I/O
              seed     = 9,              # IC seed
              odir     = 'output',       # Output directory
@@ -126,32 +117,18 @@ class Shells:
             Mediator mass in eV. Default is 1e-29.
         m_nu : float, optional
             Neutrino mass in eV. Default is 0.1.
-        T_nu : float, optional
-            Neutrino temperature in eV. Default is T_NU_EV.
-        H0 : float, optional
-            Hubble parameter today in eV. Default is H0_EV.
         kappa : float, optional
             Sets the initial scale factor: a_ini = kappa * a_NR.
         kappa2 : float, optional
             Sets the final scale factor: a_end = kappa2 / R_min.
         dt_frac : float, optional
             Courant factor controlling timestep size.
-        grav : bool, optional
-            If True, include gravitational forces in the evolution.
-        ic_type : str, optional
-            Type of initial condition profile (e.g. 'gaussian').
-        Psi0 : float, optional
-            Amplitude of the initial perturbation.
-        R0 : float or None, optional
-            Characteristic scale of the perturbation in units of 1/m_phi.
         soft : float, optional
             Softening length used in force calculations.
         iter_m : str, optional
             Method used for phi iteration (e.g. 'anderson').
         iter_tol : float, optional
             Convergence tolerance for phi iteration.
-        w_min : float or None, optional
-            Minimum weight floor for shells.
         hdf5_io : bool, optional
             If True, enable HDF5 output.
         seed : int, optional
@@ -166,7 +143,6 @@ class Shells:
 
         start = time.time()
         self.verb = verb
-        self.grav = grav
         self.log = createLog(self.verb, toFile=to_file)
         self.to_file = to_file
         self.hdf5_io  = hdf5_io
@@ -191,6 +167,7 @@ class Shells:
         # Derived dimensionless ratios
         # -------------------------------------------------------------------
         self.alpha     = g**2 * T_nu**2 / m_phi**2
+        self.alphap    = g**2 * m_nu**2 / m_phi**2
         self.beta      = self.T_nu**4 / (self.m_phi**2 * M_PL**2)
         self.eta       = self.beta / self.alpha
         self.m_phi_hat = m_phi / H0          # for the da/d(tilde_eta) update
@@ -220,8 +197,7 @@ class Shells:
         self.Rmax  = 10.0 * max(self.l_phi, self.l_fs)
         self.a_end = 1.0 / self.Rmin * kappa2
 
-        if R0 is None:
-            R0 = self.l_phi
+        R0 = self.l_phi
         self.R0 = R0
 
         self.dt_frac = dt_frac
@@ -253,35 +229,31 @@ class Shells:
         psi = ic.compute_Psi(r_grid, self)
         weights = ic.compute_weights(r_grid, dr, mu_arr, q_arr, psi, self.log)
 
+        # -------------------------------------------------------------------
         # Radial and angular momentum
+        # -------------------------------------------------------------------
         hat_qr = q_arr * mu_arr
         hat_qT = q_arr * np.sqrt(np.maximum(1.0 - mu_arr**2, 0.0))
         hat_ell = r_grid * hat_qT
 
+        # -------------------------------------------------------------------
         # Initial guess for Yukawa potential
-        phi_guess = -self.m0_hat ## Check this 
+        # -------------------------------------------------------------------
+        _, phi_guess = self._solve_background()
+        self.phi_bkg = phi_guess
 
+        # -------------------------------------------------------------------
         # Initialiase data structure
+        # -------------------------------------------------------------------
         self.data = np.zeros(Nshells, dtype=self._dtype)
         self.data['ID']   = np.arange(Nshells)
         self.data['R']    = r_grid
         self.data['q']    = hat_qr
         self.data['ell']  = hat_ell
-        self.data['w']    = weights
+        self.data['w']    = weights / self.l_phi**3
         self.data['phi']  = np.full(Nshells, phi_guess)
         self.data['psi']  = psi
         self.log.debug("[IC] Arrays created!")
-
-
-        # -------------------------------------------------------------------
-        # Normalise weights 
-        # -------------------------------------------------------------------
-        self.data['w'] /= np.max(self.data['w'])
-
-        ## Remove this!!
-        if w_min is None:
-            w_min = 1e-12
-        self.data['w'] = np.maximum(self.data['w'], w_min)
 
         # -------------------------------------------------------------------
         # Compute initial hat_phi self-consistently 
@@ -291,19 +263,36 @@ class Shells:
         # -------------------------------------------------------------------
         _ = solvePhi(self, method="anderson", tol=iter_tol, verbose=verb)
 
+        # -------------------------------------------------------------------
+        # Set self.data["m"] and self.data["eps"]
+        # -------------------------------------------------------------------
         self._update_mass()
-        self._update_cumMass() ##Only for self-gravity
-        self._update_rhobar() ## this one too
-
+        self._update_eps()
         min_m = np.min(self.m/self.m0)
         max_m = np.max(self.m/self.m0)
 
+        # -------------------------------------------------------------------
         # Commit forces for the first half-kick
+        # -------------------------------------------------------------------
         F_fs, F_lr = solveYukawaForce(self)
-        F_g = solveGravityForce(self)
         self.data["F_fs"] = F_fs
         self.data["F_lr"] = F_lr
-        self.data["F_g"]  = F_g
+
+        self.grad_psi    = np.gradient(psi)
+        self.data["F_g"] = self.eps * np.gradient(psi) # this won't change
+
+        # -------------------------------------------------------------------
+        # Uncomment this to turn on neutrino self-gravity, expected
+        # however to be fairly negligible
+        # self._update_cumMass()
+        # self._update_rhobar()
+        # F_sg = solveGravityForce(self)
+        # self.data["F_g"] += F_sg
+        # -------------------------------------------------------------------
+
+        # -------------------------------------------------------------------
+        # Find max acceleration and impose limit on dt
+        # -------------------------------------------------------------------
         self._update_dt()
 
         # -------------------------------------------------------------------
@@ -312,16 +301,28 @@ class Shells:
         self.printParams(to_file=to_file)
         self.log.info(f"ICs took {time.time()-start:.5f} s")
 
+
+
     # -----------------------------------------------------------------------
-    # Mass/energy update
+    # Mass update
     # -----------------------------------------------------------------------
     @timed("update_mass")
     def _update_mass(self):
         """
         """
         self.data['m']   = self.m0 + self.phi
+
+
+    # -----------------------------------------------------------------------
+    # Energy update
+    # -----------------------------------------------------------------------
+    @timed("update_eps")
+    def _update_eps(self):
+        """
+        """
         self.data['eps'] = np.sqrt(self.q**2 + self.ell**2 / self.R**2
                                  + self.a**2 * self.m**2)
+
 
     # -----------------------------------------------------------------------
     # Update cumulative weighted mass
@@ -368,11 +369,6 @@ class Shells:
         """
         self.a += self.dt * np.sqrt(self.a) / self.m_phi_hat
         z = 1/self.a-1
-
-        ## Update external gravitational potential time dependence
-        self.delta0 = 1.73342 / (z**(0.7358) * self.frange**(0.0992))
-        self.data['psi'] = self.psi_pref * self.delta0 / self.a
-
         self.log.debug(f"[da] Time update -> {self.a:.5f}")
 
 
@@ -414,7 +410,7 @@ class Shells:
     # -----------------------------------------------------------------------
     #  Time step: kick-drift-kick leapfrog
     # -----------------------------------------------------------------------
-    def step(self, verb=False):
+    def step(self, fs=True, lr=True, gr=True):
         """
         Advance by one tilde_eta step using kick-drift-kick (KDK) leapfrog.
 
@@ -423,6 +419,7 @@ class Shells:
 
             d(hat_q)/d(hat_eta) = hat_ell^2 / (hat_eps * hat_r^3)          [FS]
                                 - a^2 * alpha * hat_m / hat_eps * F_kernel [LR]
+                                - hat_eps * dPsi/dhat_r                    [GR]
 
             da      /d(hat_eta) = sqrt(a) / m_phi_hat                [update_a]
 
@@ -433,15 +430,15 @@ class Shells:
         self.log.debug(f"step {self.curr:5d}")
         self.log.debug("-" * 50)
 
-        dt = self.dt
-        soft = self.soft
-        F_fs_prev = self.F_fs
-        F_lr_prev = self.F_lr
-        F_g_prev = self.F_g
+        dt    = self.dt
+        F_fs  = self.F_fs if fs else np.zeros(self.N)
+        F_lr  = self.F_lr if lr else np.zeros(self.N)
+        F_g   = self.F_g
+        F_tot = F_fs - F_lr - F_g
 
         # -- Half kick --
-        self.data['q'] += 0.5 * dt * (F_fs_prev - F_lr_prev - F_g_prev)
-        self._update_mass() # For eps update
+        self.data['q'] += 0.5 * dt * F_tot
+        self._update_eps()
 
         # -- Store pre-drift state for phi interpolation --
         R_old   = self.data['R'].copy()
@@ -452,7 +449,7 @@ class Shells:
         self.data['R'] += dt * self.data['q'] / self.data['eps']
 
         # -- Reflecting boundary conditions --
-        lo = self.data['R'] < soft
+        lo = self.data['R'] < self.soft
         self.data['R'][lo]  = 2.0*self.Rmin - self.data['R'][lo]
         self.data['q'][lo] *= -1.0
 
@@ -463,40 +460,35 @@ class Shells:
         # -- Sort and updates --
         self._sort()
         self._update_a()
-        self._update_mass() # For update eps
-        if self.grav:
-            self._update_cumMass()
-            self._update_rhobar()
+        self._update_eps()
+
         self.curr += 1
 
         # -- Phi and Force updates
         phi0_interp = interpPhi(R_old, phi_old, self.data['R'])
         self.data['phi'] = phi0_interp
         _ = solvePhi(self, method=self.iter_m,\
-                     tol=self.iter_tol, verbose=verb)
+                     tol=self.iter_tol, verbose=self.verb)
 
         self._update_mass()
-        if self.grav:
-            self._update_cumMass()
-            self._update_rhobar()
-        min_m = np.min(self.m/self.m0)
-        max_m = np.max(self.m/self.m0)
+        self._update_eps()
 
         F_fs, F_lr = solveYukawaForce(self)
-        ## Gravity force from external potential
-        if self.grav:
-            F_g = solveGravityForce(self)
-            self.data["F_g"] = F_g
-        else:
-            F_g = np.zeros(self.N)
+        self.data["F_fs"] = F_fs if fs else np.zeros(self.N)
+        self.data["F_lr"] = F_lr if lr else np.zeros(self.N)
+        self.data["F_g"]  = self.data["eps"] * self.grad_psi
 
-        self.data["F_fs"] = F_fs
-        self.data["F_lr"] = F_lr
+        # Uncomment this for neutrino self-gravity
+        # Self._update_cumMass()
+        # Self._update_rhobar()
+        # F_sg = solveGravityForce(self)
+        # self.data["F_g"] += F_sg
+
         self._update_dt()
 
         # -- Second half kick  --
         self.data['q'] += 0.5 * dt * (F_fs - F_lr - F_g)
-        self._update_mass()
+        self._update_eps()
 
 
     # -----------------------------------------------------------------------
@@ -556,6 +548,7 @@ class Shells:
             head.attrs['Rmax'] = self.Rmax
             head.attrs['m0'] = self.m0
             head.attrs['dt'] = self.dt
+            head.attrs['phib'] = self.phi_bkg
 
             data = f.create_group("Data")
             data.create_dataset("ID",   data=self.ID,    dtype=np.int32)
@@ -589,7 +582,8 @@ class Shells:
                     self.data['ID'], self.data['R'],
                     self.data['q'],  self.data['ell'],
                     self.data['m'],  self.data['w'],
-                    self.data['phi'], self.data['F_fs'], self.data['F_lr']
+                    self.data['phi'], self.data['F_fs'],
+                    self.data['F_lr'], self.data['F_g']
                 ]),
                 header=header,
                 fmt="%d %.3e %.3e %.3e %.3e %.3e %.3e %.3e %.3e"
@@ -619,6 +613,7 @@ class Shells:
             self.alpha = float(f['Header'].attrs['alpha'])
             self.Rmin  = float(f['Header'].attrs['Rmin'])
             self.Rmax  = float(f['Header'].attrs['Rmax'])
+            self.phi_bkg = float(f['Header'].attrs['phib'])
 
             N =  int(f['Header'].attrs['N'])
             self.data = np.zeros(N, dtype=self._dtype)
@@ -633,6 +628,7 @@ class Shells:
             self.data['phi']  = f['Data/phi']
             self.data['F_fs'] = f['Data/F_fs']
             self.data['F_lr'] = f['Data/F_lr']
+            self.data['F_g']  = f['Data/F_g']
 
 
     @timed("I/O")
@@ -666,6 +662,7 @@ class Shells:
             self.data['phi'] = raw[:,6]
             self.data['F_fs'] = raw[:,7]
             self.data['F_lr'] = raw[:,8]
+            self.data['F_g']  = raw[:,9]
 
 
 
@@ -688,9 +685,8 @@ class Shells:
         message.append(f"   T_nu    = {self.T_nu:.3e} eV")
         message.append(f"   Range   = {self.frange:.3e} Mpc\n")
         message.append(f"   alpha   = {self.alpha:.3e}  ")
+        message.append(f"   alpha'  = {self.alphap:.3e}  ")
         message.append(f"   delta0  = {self.delta0:.3f}  ")
-        #message.append(f"   beta    = {self.beta:.3e}  ")
-        #message.append(f"   eta     = {self.eta:.3e}  ")
         message.append(f"   m/m0    = [{min_m:.5f},{max_m:5f}]\n")
         message.append(f"   m_nu/T_nu = {self.m0_hat:.3e} ")
         message.append(f"   m_phi/H0  = {self.m_phi_hat:.3e}\n")
@@ -733,7 +729,7 @@ class Shells:
         occ = mass > 0
         n      = np.full_like(r_c, np.nan)
         n[occ] = mass[occ] / vol[occ]
-        return r_c, n
+        return r_c[occ], n[occ]
 
 
     # -----------------------------------------------------------------------

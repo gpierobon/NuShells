@@ -77,7 +77,7 @@ def _computePhi(shells, xi_cap=500.0):
 
     # Combine terms: hat_phi_i = -alpha/4pi * (outer_term + inner_term)
     phi = -(exp_over_r * sum_outer + sinh_over_r * sum_inner)
-    phi *= alpha / (4.0 * np.pi)
+    phi *= alpha
 
     # Cache, so no need to recompute force (after last phi iteration)
     shells._cache = {
@@ -93,6 +93,7 @@ def _stepPhi(shells, phi):
     """One iterative step: set phi -> update m -> compute new phi."""
     shells.data["phi"] = phi
     shells._update_mass()          # m = m0 + phi
+    shells._update_eps()
     return _computePhi(shells)
 
 
@@ -198,6 +199,7 @@ def solvePhi(
     # commit solution
     shells.data["phi"] = phi
     shells._update_mass()
+    shells._update_eps()
 
     status = "converged" if converged else "NOT converged"
     shells.log.debug(f"[solve_phi] {method:10s} iters={n_iter:3d}  err={err:.2e}")

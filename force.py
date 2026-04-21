@@ -38,6 +38,7 @@ def solveYukawaForce(shells, xi_cap=500.0):
     return fs, lr
 
 
+## This is needed for the neutrino self-gravity only
 @timed("GravityForce")
 def solveGravityForce(shells):
     """ """

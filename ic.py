@@ -52,8 +52,7 @@ def compute_weights(r, dr, mu, q, Psi, log):
 
     f0     = 1.0 / (np.exp(q) + 1.0)
     dfdlnq = -(q * np.exp(q)) / (np.exp(q) + 1.0)**2   # = q * df/dq
-    pert   = 1.0 + (dfdlnq / f0) * Psi * mu
-    #pert   = 1.0 + (dfdlnq / f0) * 2*np.pi / a * .... # Add a in inputs
+    pert   = 1.0 + (dfdlnq / f0) * Psi
 
     weight = (
         8.0 * np.pi**2    # solid angle factor
@@ -66,28 +65,21 @@ def compute_weights(r, dr, mu, q, Psi, log):
     return weight
 
 
-def get_profile(r, Psi0, R0, log, ptype='gaussian', rmax=None):
+# -----------------------------------------------------------------------
+# Grav. potential computation
+# -----------------------------------------------------------------------
+def compute_Psi(R, shells):
     """ """
-    rho = r/R0
-    if ptype == 'gaussian':
-        prof = Psi0 * np.exp(-0.5*rho**2)
-    elif ptype == 'gaussian_c':
-        prof = Psi0 * (1.0 - 2.0/3.0*rho**2) * np.exp(-rho**2)
-    elif ptype == 'exp_c':
-        prof = Psi0 * (1.0 - 2.0/3.0*rho) * np.exp(-2.0*rho)
-    elif ptype == 'poly_c':
-        prof = Psi0 * 2.0/6.0 * (3 - rho**4) / (1 + rho**4)**2
-    elif ptype == 'tophat':
-        prof = np.zeros(len(r))
-        prof[r < R0] = Psi0
-    elif ptype == 'tophat_c':
-        if rmax is None:
-            rmax = 2*R0
-        rhomax = rmax/R0
-        prof = np.zeros(len(r))
-        prof[r < R0] = Psi0
-        prof[(r > R0) & (r < rmax)] = - Psi0 / (rhomax**3-1)
-    else:
-        raise ValueError(f"Profile {ptype} not recognised")
-    log.debug(f"[IC] Using {ptype} profile for initial perturbation")
-    return prof
+    a      = shells.a
+    mphi   = shells.m_phi_hat
+    rho    = R / shells.R0
+    delta0 = shells.delta0
+    omega0 = 0.264
+
+    psi_pref = - (2*np.pi)**(1.5) / (6.0 * mphi) * omega0 * np.exp(-rho**2)
+    psi = psi_pref * delta0 / a
+
+    shells.log.debug(f"[IC] Computed gravitational potential Psi")
+    return psi
+
+
