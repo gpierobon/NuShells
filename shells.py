@@ -157,8 +157,8 @@ class Shells:
         self.m_phi = m_phi
         self.r_phi = 1/m_phi
         self.m_nu  = m_nu
-        self.T_nu  = T_nu
-        self.H0    = H0
+        self.T_nu  = T_NU_EV
+        self.H0    = H0_EV
         self.frange = self.r_phi*EV_2_PC*1e-6 # Mpc
 
         self._check_g()
@@ -166,12 +166,12 @@ class Shells:
         # -------------------------------------------------------------------
         # Derived dimensionless ratios
         # -------------------------------------------------------------------
-        self.alpha     = g**2 * T_nu**2 / m_phi**2
-        self.alphap    = g**2 * m_nu**2 / m_phi**2
+        self.alpha     = g**2 * self.T_nu**2 / m_phi**2
+        self.alphap    = g**2 * self.m_nu**2 / m_phi**2
         self.beta      = self.T_nu**4 / (self.m_phi**2 * M_PL**2)
         self.eta       = self.beta / self.alpha
-        self.m_phi_hat = m_phi / H0          # for the da/d(tilde_eta) update
-        self.m0_hat    = m_nu  / T_nu
+        self.m_phi_hat = m_phi / self.H0     # for the da/d(tilde_eta) update
+        self.m0_hat    = m_nu  / self.T_nu
         self.m0        = self.m0_hat
 
         # -------------------------------------------------------------------
@@ -181,7 +181,7 @@ class Shells:
         a_ini      = kappa * self.a_NR
         self.a     = a_ini
         self.a_ini = a_ini
-        self.eta   = 2/H0*np.sqrt(self.a)
+        self.eta   = 2/self.H0*np.sqrt(self.a)
         self.curr  = 0
         self.meas  = 0
 
@@ -311,6 +311,8 @@ class Shells:
         """
         """
         self.data['m']   = self.m0 + self.phi
+        if np.any(self.m < 0):
+            raise RuntimeError("The effective mass has negative values!")
 
 
     # -----------------------------------------------------------------------
