@@ -75,7 +75,7 @@ def _computePhi(shells, xi_cap=500.0):
     exp_over_r  = e / R
     sinh_over_r = np.where(capped, 0.0, sinh_xi / R)
 
-    # Combine terms: hat_phi_i = -alpha/4pi * (outer_term + inner_term)
+    # Combine terms: hat_phi_i = -alpha * (outer_term + inner_term)
     phi = -(exp_over_r * sum_outer + sinh_over_r * sum_inner)
     phi *= alpha
 
@@ -92,7 +92,9 @@ def _computePhi(shells, xi_cap=500.0):
 def _stepPhi(shells, phi):
     """One iterative step: set phi -> update m -> compute new phi."""
     shells.data["phi"] = phi
-    shells._update_mass()          # m = m0 + phi
+    phi_min = -0.999 * shells.m0
+    shells.data['phi'] = np.maximum(shells.data['phi'], phi_min)
+    shells._update_mass()
     shells._update_eps()
     return _computePhi(shells)
 
@@ -198,6 +200,8 @@ def solvePhi(
 
     # commit solution
     shells.data["phi"] = phi
+    phi_min = -0.999 * shells.m0
+    shells.data['phi'] = np.maximum(shells.data['phi'], phi_min)
     shells._update_mass()
     shells._update_eps()
 

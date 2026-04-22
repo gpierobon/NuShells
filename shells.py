@@ -124,7 +124,7 @@ class Shells:
         dt_frac : float, optional
             Courant factor controlling timestep size.
         soft : float, optional
-            Softening length used in force calculations.
+            Minimum radius to be resolved.
         iter_m : str, optional
             Method used for phi iteration (e.g. 'anderson').
         iter_tol : float, optional
@@ -136,7 +136,7 @@ class Shells:
         odir : str, optional
             Output directory.
         verb : int, optional
-            Verbosity level (higher means more output).
+            Verbosity level (0: INFO, 1: DEBUG).
         to_file : bool, optional
             If True, log output to file instead of printing.
         """
@@ -261,7 +261,9 @@ class Shells:
         # For the first step we always choose anderson to make the convergence
         # is reached, however the tolerance can still be chosen
         # -------------------------------------------------------------------
-        _ = solvePhi(self, method="anderson", tol=iter_tol, verbose=verb)
+        #_ = solvePhi(self, method="anderson", tol=iter_tol, verbose=verb)
+        _ = solvePhi(self, method=self.iter_m,\
+                     tol=self.iter_tol, verbose=self.verb)
 
         # -------------------------------------------------------------------
         # Set self.data["m"] and self.data["eps"]
@@ -308,11 +310,10 @@ class Shells:
     # -----------------------------------------------------------------------
     @timed("update_mass")
     def _update_mass(self):
-        """
-        """
-        self.data['m']   = self.m0 + self.phi
+        """ """
+        self.data['m'] = self.m0 + self.data["phi"]
         if np.any(self.m < 0):
-            raise RuntimeError("The effective mass has negative values!")
+            self.log.info("The effective mass has negative values!")
 
 
     # -----------------------------------------------------------------------
@@ -320,8 +321,7 @@ class Shells:
     # -----------------------------------------------------------------------
     @timed("update_eps")
     def _update_eps(self):
-        """
-        """
+        """ """
         self.data['eps'] = np.sqrt(self.q**2 + self.ell**2 / self.R**2
                                  + self.a**2 * self.m**2)
 
@@ -766,7 +766,7 @@ class Shells:
         M = m0
 
         for i in range(max_iter):
-            M_new = m0 / (1.0 + alpha / (4.0 * np.pi) * I(M))
+            M_new = m0 / (1.0 + alpha / (6.0) * I(M))
 
             if M_new <= 0:
                 raise ValueError(f"M went negative at iteration {i}. "
