@@ -51,6 +51,7 @@ class Shells:
         self.log        = None
         self.verb       = None
         self.grav       = None
+        self.df         = None
 
         # Physical inputs [eV]
         self.g      = None
@@ -252,7 +253,7 @@ class Shells:
         self.data['R']    = r_grid
         self.data['q']    = hat_qr
         self.data['ell']  = hat_ell
-        self.data['w']    = weights / self.l_phi**3
+        self.data['w']    = weights
         self.data['phi']  = np.full(Nshells, phi_guess)
         self.data['psi']  = psi
         self.log.debug("[IC] Arrays created!")
@@ -550,7 +551,10 @@ class Shells:
             head.attrs['alpha'] = self.alpha
             head.attrs['Rmin'] = self.Rmin
             head.attrs['Rmax'] = self.Rmax
+            head.attrs['R0'] = self.R0
             head.attrs['m0'] = self.m0
+            head.attrs['delta0'] = self.delta0
+            head.attrs['omega0'] = self.omega0
             head.attrs['dt'] = self.dt
             head.attrs['phib'] = self.phi_bkg
 
@@ -613,6 +617,9 @@ class Shells:
             self.a =  float(f['Header'].attrs['a'])
             self.g =  float(f['Header'].attrs['g'])
             self.m0 = float(f['Header'].attrs['m0'])
+            self.R0 = float(f['Header'].attrs['R0'])
+            self.omega0 = float(f['Header'].attrs['omega0'])
+            self.delta0 = float(f['Header'].attrs['delta0'])
             self.dt = float(f['Header'].attrs['dt'])
             self.m_phi = float(f['Header'].attrs['m_phi'])
             self.alpha = float(f['Header'].attrs['alpha'])
@@ -770,7 +777,7 @@ class Shells:
         M = m0
 
         for i in range(max_iter):
-            M_new = m0 / (1.0 + alpha / (6.0) * I(M))
+            M_new = m0 / (1.0 + alpha / (a**2 * 12.0) * I(M))
 
             if M_new <= 0:
                 raise ValueError(f"M went negative at iteration {i}. "

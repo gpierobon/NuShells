@@ -41,13 +41,9 @@ def compute_weights(r, dr, q, Psi, log):
 
     Returns
     -------
-    w : float, proportional to r^2 dr * q^2 * f(q) * (1 + perturbation)
-
-    Perturbation from linearised Boltzmann equation:
-        delta_f / f_0 = -(d ln f_0 / d ln q) * Psi
-    where d ln f_0 / d ln q = -q * exp(q) / (exp(q)+1)  / f_0
+    w  : float, proportional to r^2 dr * q^2 * f(q) * (1 + perturbation)
+    df : float, delta f perturbation
     """
-    Nq     = 1.5 * scipy.special.zeta(3) # normalisation: int q^2/(e^q+1)dq 
 
     f0     = 1.0 / (np.exp(q) + 1.0)
     dfdlnq = -(q * np.exp(q)) / (np.exp(q) + 1.0)**2   # = q * df/dq
@@ -57,9 +53,9 @@ def compute_weights(r, dr, q, Psi, log):
         8.0 * np.pi**2    # solid angle factor
         * r**2 * dr       # radial volume element [1/m_phi]^3
         * (1.0 - Psi)     # metric perturbation correction
-        * 2.0 * Nq        # FD normalisation
-        * pert            # linearised perturbation (delta f) 
+        * f0 * pert       # linearised perturbation (delta f)
     )
+
     log.debug(f"[IC] Computed weights")
     return weight, dfdlnq * Psi
 
@@ -75,11 +71,8 @@ def compute_Psi(R, shells):
     delta0 = shells.delta0
     omega0 = shells.omega0
 
-    norm = 3*np.sqrt(3)
-
-    psi_pref = - 0.5 * omega0 / mphi * np.exp(1.5-rho**2/2) / norm
-    psi = psi_pref * delta0 / a
-
+    norm = - 1.0 / (16.0 * 3.0 * np.sqrt(3) * np.pi**3)
+    psi = norm * omega0 * delta0 / (a**3 *  mphi**2) * np.exp(1.5-0.5*rho**2)
     shells.log.debug(f"[IC] Computed gravitational potential Psi")
     return psi
 
