@@ -28,7 +28,7 @@ def sample_q(shells, N):
 # -----------------------------------------------------------------------
 # Weight computation
 # -----------------------------------------------------------------------
-def compute_weights(r, dr, mu, q, Psi, log):
+def compute_weights(r, dr, q, Psi, log):
     """
     Phase-space weight for one shell.
 
@@ -36,7 +36,6 @@ def compute_weights(r, dr, mu, q, Psi, log):
     ----------
     r   : hat_r
     dr  : radial bin width
-    mu  : cos(theta) in [-1,1]
     q   : hat_q_total = q/T_nu, O(1)
     Psi : dimensionless Newtonian perturbation potential
 
@@ -45,7 +44,7 @@ def compute_weights(r, dr, mu, q, Psi, log):
     w : float, proportional to r^2 dr * q^2 * f(q) * (1 + perturbation)
 
     Perturbation from linearised Boltzmann equation:
-        delta_f / f_0 = -(d ln f_0 / d ln q) * Psi * mu
+        delta_f / f_0 = -(d ln f_0 / d ln q) * Psi
     where d ln f_0 / d ln q = -q * exp(q) / (exp(q)+1)  / f_0
     """
     Nq     = 1.5 * scipy.special.zeta(3) # normalisation: int q^2/(e^q+1)dq 
@@ -62,7 +61,7 @@ def compute_weights(r, dr, mu, q, Psi, log):
         * pert            # linearised perturbation (delta f) 
     )
     log.debug(f"[IC] Computed weights")
-    return weight
+    return weight, dfdlnq * Psi
 
 
 # -----------------------------------------------------------------------
@@ -74,9 +73,11 @@ def compute_Psi(R, shells):
     mphi   = shells.m_phi_hat
     rho    = R / shells.R0
     delta0 = shells.delta0
-    omega0 = 0.264
+    omega0 = shells.omega0
 
-    psi_pref = - (2*np.pi)**(1.5) / (6.0 * mphi) * omega0 * np.exp(-rho**2)
+    norm = 3*np.sqrt(3)
+
+    psi_pref = - 0.5 * omega0 / mphi * np.exp(1.5-rho**2/2) / norm
     psi = psi_pref * delta0 / a
 
     shells.log.debug(f"[IC] Computed gravitational potential Psi")

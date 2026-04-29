@@ -225,9 +225,11 @@ class Shells:
         # Compute perturbation profiles
         # -------------------------------------------------------------------
         self.delta0 = 1.73342 / (z_ini**(0.7358) * self.frange**(0.0992))
+        self.omega0 = 0.3
 
         psi = ic.compute_Psi(r_grid, self)
-        weights = ic.compute_weights(r_grid, dr, mu_arr, q_arr, psi, self.log)
+        weights, df = ic.compute_weights(r_grid, dr, q_arr, psi, self.log)
+        self.df = df
 
         # -------------------------------------------------------------------
         # Radial and angular momentum
@@ -561,6 +563,7 @@ class Shells:
             data.create_dataset("eps",  data=self.eps,   dtype=np.float32)
             data.create_dataset("w",    data=self.w,     dtype=np.float32)
             data.create_dataset("phi",  data=self.phi,   dtype=np.float32)
+            data.create_dataset("psi",  data=self.psi,   dtype=np.float32)
             data.create_dataset("F_fs", data=self.F_fs,  dtype=np.float32)
             data.create_dataset("F_lr", data=self.F_lr,  dtype=np.float32)
             data.create_dataset("F_g",  data=self.F_g,   dtype=np.float32)
@@ -628,6 +631,7 @@ class Shells:
             self.data['w']    = f['Data/w']
             self.data['eps']  = f['Data/eps']
             self.data['phi']  = f['Data/phi']
+            self.data['psi']  = f['Data/psi']
             self.data['F_fs'] = f['Data/F_fs']
             self.data['F_lr'] = f['Data/F_lr']
             self.data['F_g']  = f['Data/F_g']
